@@ -3,6 +3,7 @@ export default {
     "sourceSheetId": 1902818640,
     "friendzone": {
         "sheetId": 1266621810,
-        "minMatchCount": 3,
+        "matchThreshold": 5,
+        "amount": 10,
     }
 }

@@ -3,6 +3,7 @@ import path from 'path';
 import { Command } from 'commander';
 import { downloadSourceSheet } from './commands/download.js';
 import { runFriendzoneAnalysis } from './commands/friendzone.js';
+import { runFriendzonePrint } from './commands/print.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -27,14 +28,32 @@ program
     }
   });
 
-program
+const friendzone = program
   .command('friendzone')
-  .description('Build upper triangular player same-team matrix')
+  .description('Friendzone analysis commands');
+
+friendzone
+  .command('generate', { isDefault: true })
+  .description('Generate friendzone CSV matrix')
   .action(async () => {
     try {
       await runFriendzoneAnalysis();
     } catch (error) {
       console.error('Error running friendzone analysis:', error);
+      process.exit(1);
+    }
+  });
+
+friendzone
+  .command('print [player]')
+  .description('Print sorted summary of top friends, enemies, and neutrals')
+  .option('-t, --threshold <number>', 'minimum games played together', (val) => parseInt(val, 10))
+  .option('-a, --amount <number>', 'number of pairs to print', (val) => parseInt(val, 10))
+  .action(async (player, options) => {
+    try {
+      await runFriendzonePrint({ ...options, player });
+    } catch (error) {
+      console.error('Error running friendzone print:', error);
       process.exit(1);
     }
   });
