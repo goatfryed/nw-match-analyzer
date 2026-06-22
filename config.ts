@@ -10,6 +10,13 @@ export default {
     "validation": {
         "maxRowsPerGame": 45
     },
+    "mmr": {
+        "defaultRating": 1500,
+        "kFactor": 32,
+        "matchThreshold": 5,
+        "amount": 20,
+        "sort": "descending"
+    },
     "aliases": {
         "goatfryed": ["Goatfryed", "goatfryd"],
         "Tierlok": ["Tierlok", "Hopz"],

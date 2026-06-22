@@ -8,6 +8,7 @@ import { runFriendzoneShow } from './commands/friendzone/show.js';
 import { runFriendzoneCliques } from './commands/friendzone/cliques.js';
 import { runFriendzoneStacks } from './commands/friendzone/stacks.js';
 import { validateSourceData } from './commands/validate.js';
+import { calculateSourceMmr, runMmrList, runMmrShow } from './commands/mmr.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -115,6 +116,52 @@ friendzone
       await runFriendzoneStacks(options);
     } catch (error) {
       console.error('Error running friendzone stacks:', error);
+      process.exit(1);
+    }
+  });
+
+const mmr = program
+  .command('mmr')
+  .description('MMR analysis commands');
+
+mmr
+  .command('calculate')
+  .description('Calculate MMR ratings from source CSV and save to .tmp/mmr.csv')
+  .option('-d, --default-rating <number>', 'default rating', (val) => parseFloat(val))
+  .option('-k, --k-factor <number>', 'K-factor constant', (val) => parseFloat(val))
+  .option('--generations <number>', 'number of generations', (val) => parseInt(val, 10))
+  .action(async (options) => {
+    try {
+      await calculateSourceMmr(options);
+    } catch (error) {
+      console.error('Error running MMR calculation:', error);
+      process.exit(1);
+    }
+  });
+
+mmr
+  .command('list')
+  .description('Print sorted summary of players MMR')
+  .option('-t, --threshold <number>', 'minimum games played', (val) => parseInt(val, 10))
+  .option('-a, --amount <number>', 'number of players to print', (val) => parseInt(val, 10))
+  .option('-s, --sort <string>', 'sort order (ascending or descending)')
+  .action(async (options) => {
+    try {
+      await runMmrList(options);
+    } catch (error) {
+      console.error('Error running MMR list:', error);
+      process.exit(1);
+    }
+  });
+
+mmr
+  .command('show <player>')
+  .description('Show MMR profile of a specific player')
+  .action(async (player) => {
+    try {
+      await runMmrShow(player);
+    } catch (error) {
+      console.error('Error running MMR show:', error);
       process.exit(1);
     }
   });
