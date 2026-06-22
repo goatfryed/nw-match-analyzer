@@ -6,5 +6,8 @@ export default {
         "matchThreshold": 5,
         "amount": 10,
         "cliqueThreshold": 0.75,
+    },
+    "validation": {
+        "maxRowsPerGame": 45
     }
 }

@@ -7,6 +7,7 @@ import { runFriendzoneList } from './commands/friendzone/list.js';
 import { runFriendzoneShow } from './commands/friendzone/show.js';
 import { runFriendzoneCliques } from './commands/friendzone/cliques.js';
 import { runFriendzoneStacks } from './commands/friendzone/stacks.js';
+import { validateSourceData } from './commands/validate.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -30,7 +31,17 @@ program
       process.exit(1);
     }
   });
-
+program
+  .command('validate')
+  .description('Validate the downloaded source match data')
+  .action(async () => {
+    try {
+      await validateSourceData();
+    } catch (error) {
+      console.error('Error running validation:', error);
+      process.exit(1);
+    }
+  });
 const friendzone = program
   .command('friendzone')
   .description('Friendzone analysis commands');

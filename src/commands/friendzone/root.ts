@@ -48,6 +48,7 @@ export async function runFriendzoneAnalysis(): Promise<void> {
 
   for (const record of records) {
     const game = record.game;
+    const date = record.date;
     const name = record.name;
     const side = record.side;
 
@@ -55,10 +56,13 @@ export async function runFriendzoneAnalysis(): Promise<void> {
 
     allPlayers.add(name);
 
-    if (!games.has(game)) {
-      games.set(game, []);
+    // Combine game and date to uniquely identify a match
+    const matchKey = date ? `${game}_${date}` : game;
+
+    if (!games.has(matchKey)) {
+      games.set(matchKey, []);
     }
-    games.get(game)!.push({ name, side });
+    games.get(matchKey)!.push({ name, side });
   }
 
   console.log(`Found ${allPlayers.size} unique players across ${games.size} matches.`);

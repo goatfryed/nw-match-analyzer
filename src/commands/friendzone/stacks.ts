@@ -14,6 +14,7 @@ interface StacksOptions {
 
 interface SourceRecord {
   game: string;
+  date: string;
   side: string;
   name: string;
 }
@@ -33,6 +34,7 @@ function loadSourceRecords(): SourceRecord[] {
 
   return sourceRecords.map((r: any) => ({
     game: r.game,
+    date: r.date,
     side: r.side,
     name: r.name,
   }));
@@ -95,15 +97,26 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
 
   console.log(`Loading matches and grouping teams...`);
   const sourceRecords = loadSourceRecords();
-  const teamsMap = new Map<string, string[]>(); // key: "game:side" -> player names
+  const teamsMap = new Map<string, string[]>(); // key: "uniqueMatchKey:side" -> player names
+  const playerGames = new Map<string, Set<string>>(); // player name -> set of uniqueMatchKeys
 
   for (const r of sourceRecords) {
     if (!r.game || !r.side || !r.name) continue;
-    const key = `${r.game}:${r.side}`;
+    const matchKey = r.date ? `${r.game}_${r.date}` : r.game;
+    const key = `${matchKey}:${r.side}`;
+
     if (!teamsMap.has(key)) {
       teamsMap.set(key, []);
     }
-    teamsMap.get(key)!.push(r.name);
+    const teamList = teamsMap.get(key)!;
+    if (!teamList.includes(r.name)) {
+      teamList.push(r.name);
+    }
+
+    if (!playerGames.has(r.name)) {
+      playerGames.set(r.name, new Set());
+    }
+    playerGames.get(r.name)!.add(matchKey);
   }
 
   console.log(`Analyzing stacks of sizes ${minSize} to ${maxSize} with mutual friendship >= ${friendshipThreshold.toFixed(4)}...`);
@@ -122,12 +135,32 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
     }
 
     const sortedStacks = Array.from(stackCounts.entries())
-      .map(([playersStr, count]) => ({
-        players: playersStr,
-        count,
-      }))
-      .filter((item) => item.count >= threshold)
-      .sort((a, b) => b.count - a.count || a.players.localeCompare(b.players, undefined, { sensitivity: 'base' }));
+      .map(([playersStr, count]) => {
+        const players = playersStr.split(', ');
+        let sameGameCount = 0;
+        if (players.length > 0) {
+          let intersection = new Set(playerGames.get(players[0]) || []);
+          for (let i = 1; i < players.length; i++) {
+            const nextSet = playerGames.get(players[i]) || new Set();
+            const nextIntersection = new Set<string>();
+            for (const gId of intersection) {
+              if (nextSet.has(gId)) {
+                nextIntersection.add(gId);
+              }
+            }
+            intersection = nextIntersection;
+          }
+          sameGameCount = intersection.size;
+        }
+
+        return {
+          players: playersStr,
+          sameTeamCount: count,
+          sameGameCount,
+        };
+      })
+      .filter((item) => item.sameTeamCount >= threshold)
+      .sort((a, b) => b.sameTeamCount - a.sameTeamCount || a.players.localeCompare(b.players, undefined, { sensitivity: 'base' }));
 
     const titleSuffix = s === maxSize ? ' (or larger)' : '';
     console.log(`\n=== Stacks of ${s}${titleSuffix} (Top ${amount}) ===`);
@@ -139,7 +172,7 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
 
     const displayList = sortedStacks.slice(0, amount);
     displayList.forEach((stack, index) => {
-      console.log(`  ${index + 1}. ${stack.players} (${stack.count} games together)`);
+      console.log(`  ${index + 1}. ${stack.players} (${stack.sameTeamCount}/${stack.sameGameCount} games together)`);
     });
   }
 }
