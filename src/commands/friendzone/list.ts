@@ -1,5 +1,6 @@
 import { loadPlayerGameCounts, loadPairRecords, findExactCasing, PairRecord } from './common.js';
 import config from '../../../config.js';
+import { resolvePlayerName } from '../../common.js';
 
 interface ListOptions {
   threshold?: number;
@@ -81,8 +82,9 @@ export async function runFriendzoneList(
   let queriedPlayer: { name: string; gamesCount: number } | undefined;
 
   if (playerArg) {
-    const filterName = playerArg.trim().toLowerCase();
-    console.log(`Filtering relationships including player: "${playerArg}"...`);
+    const resolvedName = resolvePlayerName(playerArg);
+    const filterName = resolvedName.toLowerCase();
+    console.log(`Filtering relationships including player: "${resolvedName}"...`);
     filteredPairs = filteredPairs.filter(p =>
       p.player.toLowerCase() === filterName ||
       p.other.toLowerCase() === filterName

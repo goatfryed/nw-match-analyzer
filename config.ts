@@ -9,5 +9,9 @@ export default {
     },
     "validation": {
         "maxRowsPerGame": 45
+    },
+    "aliases": {
+        "goatfryed": ["Goatfryed", "goatfryd"],
+        "Tierlok": ["Tierlok", "Hopz"],
     }
 }
