@@ -1,7 +1,7 @@
 import { loadPairRecords } from './common.js';
 import config from '../../../config.js';
 
-interface StacksOptions {
+interface CliquesOptions {
   threshold?: number;
   thresholdFriendship?: number;
   amount?: number;
@@ -64,7 +64,7 @@ function getAverageFriendship(clique: string[], pairFriendshipIndex: Map<string,
   return count > 0 ? sum / count : 0;
 }
 
-export async function runFriendzoneStacks(options: StacksOptions): Promise<void> {
+export async function runFriendzoneCliques(options: CliquesOptions): Promise<void> {
   const pairs = loadPairRecords();
 
   const threshold = options.threshold ?? config.friendzone?.matchThreshold ?? 5;
@@ -128,16 +128,16 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
     bucket.sort((a, b) => b.avgFriendship - a.avgFriendship);
 
     const titleSuffix = s === maxSize ? ' (or larger)' : '';
-    console.log(`\n=== Stacks of ${s}${titleSuffix} (Top ${amount}) ===`);
+    console.log(`\n=== Cliques of ${s}${titleSuffix} (Top ${amount}) ===`);
     
     if (bucket.length === 0) {
-      console.log('  No stacks found.');
+      console.log('  No cliques found.');
       continue;
     }
 
     const displayList = bucket.slice(0, amount);
-    displayList.forEach((stack, index) => {
-      console.log(`  ${index + 1}. ${stack.players.join(', ')} (Friendship: ${stack.avgFriendship.toFixed(4)})`);
+    displayList.forEach((clique, index) => {
+      console.log(`  ${index + 1}. ${clique.players.join(', ')} (Friendship: ${clique.avgFriendship.toFixed(4)})`);
     });
   }
 }

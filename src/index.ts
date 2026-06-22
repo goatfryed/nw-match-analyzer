@@ -5,7 +5,7 @@ import { downloadSourceSheet } from './commands/download.js';
 import { runFriendzoneAnalysis } from './commands/friendzone/root.js';
 import { runFriendzoneList } from './commands/friendzone/list.js';
 import { runFriendzoneShow } from './commands/friendzone/show.js';
-import { runFriendzoneStacks } from './commands/friendzone/stacks.js';
+import { runFriendzoneCliques } from './commands/friendzone/cliques.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -73,18 +73,18 @@ friendzone
   });
 
 friendzone
-  .command('stacks')
-  .description('Print groups/stacks of players who play together frequently')
+  .command('cliques')
+  .description('Print groups/cliques of players who play together frequently')
   .option('-t, --threshold <number>', 'minimum games played together', (val) => parseInt(val, 10))
   .option('-f, --threshold-friendship <number>', 'friendship index threshold', (val) => parseFloat(val))
-  .option('-a, --amount <number>', 'number of stacks to print', (val) => parseInt(val, 10))
-  .option('-s, --min-size <number>', 'minimum stack size', (val) => parseInt(val, 10))
-  .option('-m, --max-size <number>', 'maximum stack size', (val) => parseInt(val, 10))
+  .option('-a, --amount <number>', 'number of cliques to print', (val) => parseInt(val, 10))
+  .option('-s, --min-size <number>', 'minimum clique size', (val) => parseInt(val, 10))
+  .option('-m, --max-size <number>', 'maximum clique size', (val) => parseInt(val, 10))
   .action(async (options) => {
     try {
-      await runFriendzoneStacks(options);
+      await runFriendzoneCliques(options);
     } catch (error) {
-      console.error('Error running friendzone stacks:', error);
+      console.error('Error running friendzone cliques:', error);
       process.exit(1);
     }
   });
