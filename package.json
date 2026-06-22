@@ -7,9 +7,22 @@
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "^11.7.0",
+      "version": "11.7.0",
       "onFail": "download"
     }
   },
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "cli": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "dotenv": "^16.4.5",
+    "googleapis": "^134.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "tsx": "^4.7.2",
+    "typescript": "^5.4.5"
+  }
 }
