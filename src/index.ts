@@ -109,6 +109,7 @@ friendzone
   .option('-a, --amount <number>', 'number of stacks to print', (val) => parseInt(val, 10))
   .option('-s, --min-size <number>', 'minimum stack size', (val) => parseInt(val, 10))
   .option('-m, --max-size <number>', 'maximum stack size', (val) => parseInt(val, 10))
+  .option('--include-subsets', 'include stacks that are subsets of larger stacks')
   .action(async (options) => {
     try {
       await runFriendzoneStacks(options);

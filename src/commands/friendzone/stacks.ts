@@ -10,6 +10,7 @@ interface StacksOptions {
   amount?: number;
   minSize?: number;
   maxSize?: number;
+  includeSubsets?: boolean;
 }
 
 interface SourceRecord {
@@ -77,20 +78,37 @@ function getValidSubsets(
   return results;
 }
 
+function getAverageFriendship(clique: string[], pairFriendshipIndex: Map<string, number>): number {
+  let sum = 0;
+  let count = 0;
+  for (let i = 0; i < clique.length; i++) {
+    for (let j = i + 1; j < clique.length; j++) {
+      const [a, b] = clique[i] < clique[j] ? [clique[i], clique[j]] : [clique[j], clique[i]];
+      const key = `${a}:${b}`;
+      sum += pairFriendshipIndex.get(key) || 0;
+      count++;
+    }
+  }
+  return count > 0 ? sum / count : 0;
+}
+
 export async function runFriendzoneStacks(options: StacksOptions): Promise<void> {
   const threshold = options.threshold ?? config.friendzone?.matchThreshold ?? 5;
   const friendshipThreshold = options.thresholdFriendship ?? config.friendzone?.cliqueThreshold ?? 0.75;
   const amount = options.amount ?? config.friendzone?.amount ?? 10;
   const minSize = options.minSize ?? 3;
   const maxSize = options.maxSize ?? 5;
+  const includeSubsets = options.includeSubsets ?? false;
 
   console.log(`Loading pairwise relationships...`);
   const pairs = loadPairRecords();
   const validPairs = new Set<string>();
+  const pairFriendshipIndex = new Map<string, number>();
 
   for (const r of pairs) {
+    const [a, b] = r.player < r.other ? [r.player, r.other] : [r.other, r.player];
+    pairFriendshipIndex.set(`${a}:${b}`, r.friendshipIndex);
     if (r.sameGame >= threshold && r.friendshipIndex >= friendshipThreshold) {
-      const [a, b] = r.player < r.other ? [r.player, r.other] : [r.other, r.player];
       validPairs.add(`${a}:${b}`);
     }
   }
@@ -121,12 +139,21 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
 
   console.log(`Analyzing stacks of sizes ${minSize} to ${maxSize} with mutual friendship >= ${friendshipThreshold.toFixed(4)}...`);
 
-  // Count co-occurrences of valid player subsets on the same team
+  type StackItem = {
+    players: string;
+    sameTeamCount: number;
+    sameGameCount: number;
+    avgFriendship: number;
+    score: number;
+  };
+
+  const stacksBySize = new Map<number, StackItem[]>();
+
+  // 1. Generate stacks for all sizes
   for (let s = minSize; s <= maxSize; s++) {
     const stackCounts = new Map<string, number>();
 
     for (const [_, players] of teamsMap) {
-      // Find all valid subsets of size s within this team
       const subsets = getValidSubsets(players, s, validPairs);
       for (const subset of subsets) {
         const key = subset.join(', ');
@@ -134,7 +161,7 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
       }
     }
 
-    const sortedStacks = Array.from(stackCounts.entries())
+    const list = Array.from(stackCounts.entries())
       .map(([playersStr, count]) => {
         const players = playersStr.split(', ');
         let sameGameCount = 0;
@@ -153,26 +180,78 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
           sameGameCount = intersection.size;
         }
 
+        const avgFriendship = getAverageFriendship(players, pairFriendshipIndex);
+        const score = sameGameCount > 0 ? avgFriendship * (count * count) / sameGameCount : 0;
+
         return {
           players: playersStr,
           sameTeamCount: count,
           sameGameCount,
+          avgFriendship,
+          score,
         };
       })
-      .filter((item) => item.sameTeamCount >= threshold)
-      .sort((a, b) => b.sameTeamCount - a.sameTeamCount || a.players.localeCompare(b.players, undefined, { sensitivity: 'base' }));
+      .filter((item) => item.sameTeamCount >= threshold);
+
+    stacksBySize.set(s, list);
+  }
+
+  // 2. Filter out subsets if requested
+  if (!includeSubsets) {
+    for (let s = minSize; s < maxSize; s++) {
+      const currentList = stacksBySize.get(s) || [];
+      
+      // Collect sets of players from all larger sizes
+      const parents: Set<string>[] = [];
+      for (let ps = s + 1; ps <= maxSize; ps++) {
+        const parentList = stacksBySize.get(ps) || [];
+        for (const parentStack of parentList) {
+          parents.push(new Set(parentStack.players.split(', ')));
+        }
+      }
+
+      const filtered = currentList.filter((stack) => {
+        const currentPlayers = stack.players.split(', ');
+        const isSub = parents.some((parentSet) =>
+          currentPlayers.every((p) => parentSet.has(p))
+        );
+        return !isSub;
+      });
+
+      stacksBySize.set(s, filtered);
+    }
+  }
+
+  // 3. Print the results
+  for (let s = minSize; s <= maxSize; s++) {
+    const list = stacksBySize.get(s) || [];
+    list.sort((a, b) => b.score - a.score || a.players.localeCompare(b.players, undefined, { sensitivity: 'base' }));
 
     const titleSuffix = s === maxSize ? ' (or larger)' : '';
     console.log(`\n=== Stacks of ${s}${titleSuffix} (Top ${amount}) ===`);
 
-    if (sortedStacks.length === 0) {
+    if (list.length === 0) {
       console.log('  No stacks found.');
       continue;
     }
 
-    const displayList = sortedStacks.slice(0, amount);
-    displayList.forEach((stack, index) => {
-      console.log(`  ${index + 1}. ${stack.players} (${stack.sameTeamCount}/${stack.sameGameCount} games together)`);
+    const displayList = list.slice(0, amount);
+    const maxPlayersLen = Math.max(30, ...displayList.map((item) => item.players.length));
+
+    const playersHeader = 'Players'.padEnd(maxPlayersLen);
+    const scoreHeader = 'Stack Score'.padStart(12);
+    const avgFriendshipHeader = 'Avg Friend'.padStart(12);
+    const gamesHeader = 'Games (Team/Total)'.padStart(22);
+
+    console.log(`  ${playersHeader}${scoreHeader}${avgFriendshipHeader}${gamesHeader}`);
+    console.log(`  ${'-'.repeat(maxPlayersLen + 12 + 12 + 22)}`);
+
+    displayList.forEach((stack) => {
+      const playersCol = stack.players.padEnd(maxPlayersLen);
+      const scoreCol = stack.score.toFixed(4).padStart(12);
+      const avgFriendshipCol = stack.avgFriendship.toFixed(4).padStart(12);
+      const gamesCol = `${stack.sameTeamCount}/${stack.sameGameCount}`.padStart(22);
+      console.log(`  ${playersCol}${scoreCol}${avgFriendshipCol}${gamesCol}`);
     });
   }
 }
