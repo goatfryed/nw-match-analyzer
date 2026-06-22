@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "commander": "^12.0.0",
+    "csv-parse": "^5.5.5",
     "dotenv": "^16.4.5",
     "googleapis": "^134.0.0"
   },

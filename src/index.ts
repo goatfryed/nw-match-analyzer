@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { Command } from 'commander';
 import { downloadSourceSheet } from './commands/download.js';
+import { runFriendzoneAnalysis } from './commands/friendzone.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -22,6 +23,18 @@ program
       await downloadSourceSheet();
     } catch (error) {
       console.error('Error downloading source sheet:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('friendzone')
+  .description('Build upper triangular player same-team matrix')
+  .action(async () => {
+    try {
+      await runFriendzoneAnalysis();
+    } catch (error) {
+      console.error('Error running friendzone analysis:', error);
       process.exit(1);
     }
   });
