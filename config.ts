@@ -5,5 +5,6 @@ export default {
         "sheetId": 1266621810,
         "matchThreshold": 5,
         "amount": 10,
+        "cliqueThreshold": 0.75,
     }
 }

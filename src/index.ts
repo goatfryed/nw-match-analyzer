@@ -4,6 +4,7 @@ import { Command } from 'commander';
 import { downloadSourceSheet } from './commands/download.js';
 import { runFriendzoneAnalysis } from './commands/friendzone.js';
 import { runFriendzonePrint } from './commands/print.js';
+import { runFriendzoneStacks } from './commands/stacks.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -54,6 +55,23 @@ friendzone
       await runFriendzonePrint({ ...options, player });
     } catch (error) {
       console.error('Error running friendzone print:', error);
+      process.exit(1);
+    }
+  });
+
+friendzone
+  .command('stacks')
+  .description('Print groups/stacks of players who play together frequently')
+  .option('-t, --threshold <number>', 'minimum games played together', (val) => parseInt(val, 10))
+  .option('-f, --threshold-friendship <number>', 'friendship index threshold', (val) => parseFloat(val))
+  .option('-a, --amount <number>', 'number of stacks to print', (val) => parseInt(val, 10))
+  .option('-s, --min-size <number>', 'minimum stack size', (val) => parseInt(val, 10))
+  .option('-m, --max-size <number>', 'maximum stack size', (val) => parseInt(val, 10))
+  .action(async (options) => {
+    try {
+      await runFriendzoneStacks(options);
+    } catch (error) {
+      console.error('Error running friendzone stacks:', error);
       process.exit(1);
     }
   });
