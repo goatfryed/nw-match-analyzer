@@ -407,7 +407,7 @@ export async function runMmrShow(playerArg: string, options: { threshold?: numbe
 
   const stats = players.find((p) => p.player.toLowerCase() === targetLower);
   if (!stats) {
-    console.log(`Player "${playerArg}" (resolved as "${resolvedName}") not found in the MMR dataset.`);
+    console.log(`Player "${resolvedName}" should lock in and grind some OPRs! No matches found.`);
     return;
   }
 
