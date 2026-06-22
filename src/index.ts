@@ -3,7 +3,7 @@ import path from 'path';
 import { Command } from 'commander';
 import { downloadSourceSheet } from './commands/download.js';
 import { runFriendzoneAnalysis } from './commands/friendzone.js';
-import { runFriendzonePrint } from './commands/print.js';
+import { runFriendzoneShow } from './commands/show.js';
 import { runFriendzoneStacks } from './commands/stacks.js';
 
 // Load environment variables
@@ -46,15 +46,15 @@ friendzone
   });
 
 friendzone
-  .command('print [player]')
+  .command('show [player] [other]')
   .description('Print sorted summary of top friends, enemies, and neutrals')
   .option('-t, --threshold <number>', 'minimum games played together', (val) => parseInt(val, 10))
   .option('-a, --amount <number>', 'number of pairs to print', (val) => parseInt(val, 10))
-  .action(async (player, options) => {
+  .action(async (player, other, options) => {
     try {
-      await runFriendzonePrint({ ...options, player });
+      await runFriendzoneShow(player, other, options);
     } catch (error) {
-      console.error('Error running friendzone print:', error);
+      console.error('Error running friendzone show:', error);
       process.exit(1);
     }
   });

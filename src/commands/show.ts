@@ -11,10 +11,9 @@ interface PairRecord {
   friendshipIndex: number;
 }
 
-interface PrintOptions {
+interface ShowOptions {
   threshold?: number;
   amount?: number;
-  player?: string;
 }
 
 function printTable(
@@ -41,7 +40,6 @@ function printTable(
     );
     console.log('  ' + '-'.repeat(65));
     for (const item of list) {
-      // Print the name of the person that was not queried
       const nonQueriedPlayer = item.player.toLowerCase() === filterNameLower ? item.other : item.player;
       
       const friendshipStr = `${item.friendshipIndex.toFixed(4)} (${padNum(item.sameSide, friendshipPad)}/${padNum(item.sameGame, friendshipPad)})`;
@@ -76,10 +74,34 @@ function printTable(
   }
 }
 
-export async function runFriendzonePrint(options: PrintOptions): Promise<void> {
+export async function runFriendzoneShow(
+  playerArg?: string,
+  otherArg?: string,
+  options: ShowOptions = {}
+): Promise<void> {
   const csvPath = path.resolve(process.cwd(), '.tmp/friendzone.csv');
   if (!fs.existsSync(csvPath)) {
     throw new Error(`Friendzone CSV not found at ${csvPath}. Please run 'friendzone' generate command first.`);
+  }
+
+  // Load total game counts for validation and single-player %games
+  const sourceCsvPath = path.resolve(process.cwd(), '.tmp/source.csv');
+  if (!fs.existsSync(sourceCsvPath)) {
+    throw new Error(`Source CSV not found at ${sourceCsvPath}. Please run download command first.`);
+  }
+
+  const sourceContent = fs.readFileSync(sourceCsvPath, 'utf8');
+  const sourceRecords = parse(sourceContent, {
+    columns: true,
+    skip_empty_lines: true,
+    trim: true,
+  });
+
+  const playerGameCounts = new Map<string, number>();
+  for (const r of sourceRecords) {
+    if (r.name) {
+      playerGameCounts.set(r.name, (playerGameCounts.get(r.name) || 0) + 1);
+    }
   }
 
   const fileContent = fs.readFileSync(csvPath, 'utf8');
@@ -89,7 +111,7 @@ export async function runFriendzonePrint(options: PrintOptions): Promise<void> {
     trim: true,
   });
 
-  let pairs: PairRecord[] = records.map((r: any) => ({
+  const pairs: PairRecord[] = records.map((r: any) => ({
     player: r.player,
     other: r.other,
     sameGame: parseInt(r['same game'], 10),
@@ -97,56 +119,84 @@ export async function runFriendzonePrint(options: PrintOptions): Promise<void> {
     friendshipIndex: parseFloat(r['friendship index']),
   }));
 
+  // Handle Case 1: Two Players Provided
+  if (playerArg && otherArg) {
+    const filterName1 = playerArg.trim().toLowerCase();
+    const filterName2 = otherArg.trim().toLowerCase();
+
+    // Find exact casing
+    let exactPlayer1 = '';
+    let exactPlayer2 = '';
+    for (const key of playerGameCounts.keys()) {
+      if (key.toLowerCase() === filterName1) exactPlayer1 = key;
+      if (key.toLowerCase() === filterName2) exactPlayer2 = key;
+    }
+
+    if (!exactPlayer1 || !exactPlayer2) {
+      if (!exactPlayer1) {
+        console.log(`Player "${playerArg}" was not found in the dataset.`);
+      }
+      if (!exactPlayer2) {
+        console.log(`Player "${otherArg}" was not found in the dataset.`);
+      }
+      return;
+    }
+
+    // Find relationship details order-independently
+    const matchedPair = pairs.find(p =>
+      (p.player.toLowerCase() === filterName1 && p.other.toLowerCase() === filterName2) ||
+      (p.player.toLowerCase() === filterName2 && p.other.toLowerCase() === filterName1)
+    );
+
+    const sameGame = matchedPair ? matchedPair.sameGame : 0;
+    const sameSide = matchedPair ? matchedPair.sameSide : 0;
+    const friendshipIndex = matchedPair ? matchedPair.friendshipIndex : 0.0;
+
+    console.log(`${exactPlayer1} games total: ${playerGameCounts.get(exactPlayer1)}`);
+    console.log(`${exactPlayer2} games total: ${playerGameCounts.get(exactPlayer2)}`);
+    console.log(`same game: ${sameGame}`);
+    console.log(`same side: ${sameSide}`);
+    console.log(`friendship index: ${friendshipIndex.toFixed(4)}`);
+    return;
+  }
+
+  // Handle Case 2: One Player or No Players Provided
+  let filteredPairs = pairs;
   const threshold = options.threshold ?? config.friendzone?.matchThreshold ?? 5;
   const amount = options.amount ?? config.friendzone?.amount ?? 10;
 
   console.log(`Filtering relationships with >= ${threshold} games played together...`);
-  pairs = pairs.filter(p => p.sameGame >= threshold);
+  filteredPairs = filteredPairs.filter(p => p.sameGame >= threshold);
 
   let queriedPlayer: { name: string; gamesCount: number } | undefined;
 
-  if (options.player) {
-    const filterName = options.player.trim().toLowerCase();
-    console.log(`Filtering relationships including player: "${options.player}"...`);
-    pairs = pairs.filter(p =>
+  if (playerArg) {
+    const filterName = playerArg.trim().toLowerCase();
+    console.log(`Filtering relationships including player: "${playerArg}"...`);
+    filteredPairs = filteredPairs.filter(p =>
       p.player.toLowerCase() === filterName ||
       p.other.toLowerCase() === filterName
     );
 
-    // Compute total games played by the queried player from source.csv
-    const sourceCsvPath = path.resolve(process.cwd(), '.tmp/source.csv');
-    if (fs.existsSync(sourceCsvPath)) {
-      const sourceContent = fs.readFileSync(sourceCsvPath, 'utf8');
-      const sourceRecords = parse(sourceContent, {
-        columns: true,
-        skip_empty_lines: true,
-        trim: true,
-      });
-
-      const playerGameCounts = new Map<string, number>();
-      for (const r of sourceRecords) {
-        if (r.name) {
-          playerGameCounts.set(r.name, (playerGameCounts.get(r.name) || 0) + 1);
-        }
+    let exactQueriedPlayerName = playerArg;
+    for (const key of playerGameCounts.keys()) {
+      if (key.toLowerCase() === filterName) {
+        exactQueriedPlayerName = key;
+        break;
       }
-
-      // Find the exact casing of the player name from the counts map keys
-      let exactQueriedPlayerName = options.player;
-      for (const key of playerGameCounts.keys()) {
-        if (key.toLowerCase() === filterName) {
-          exactQueriedPlayerName = key;
-          break;
-        }
-      }
-
-      const gamesCount = playerGameCounts.get(exactQueriedPlayerName) || 0;
-      queriedPlayer = { name: exactQueriedPlayerName, gamesCount };
     }
+
+    const gamesCount = playerGameCounts.get(exactQueriedPlayerName) || 0;
+    if (gamesCount === 0) {
+      console.log(`Player "${playerArg}" was not found in the dataset.`);
+      return;
+    }
+    queriedPlayer = { name: exactQueriedPlayerName, gamesCount };
   }
 
-  console.log(`Total relationships found: ${pairs.length}`);
+  console.log(`Total relationships found: ${filteredPairs.length}`);
 
-  // Bounded insertion helper for O(N * K) selection (extremely efficient for small K)
+  // Bounded insertion helper for O(N * K) selection
   function getTopK<T>(items: T[], k: number, compareFn: (a: T, b: T) => number): T[] {
     const result: T[] = [];
     for (const item of items) {
@@ -168,7 +218,7 @@ export async function runFriendzonePrint(options: PrintOptions): Promise<void> {
   }
 
   // Friends (highest friendshipIndex descending, then sameGame descending)
-  const friends = getTopK(pairs, amount, (a, b) => {
+  const friends = getTopK(filteredPairs, amount, (a, b) => {
     if (b.friendshipIndex !== a.friendshipIndex) {
       return b.friendshipIndex - a.friendshipIndex;
     }
@@ -176,7 +226,7 @@ export async function runFriendzonePrint(options: PrintOptions): Promise<void> {
   });
 
   // Enemies (lowest friendshipIndex ascending, then sameGame descending)
-  const enemies = getTopK(pairs, amount, (a, b) => {
+  const enemies = getTopK(filteredPairs, amount, (a, b) => {
     if (a.friendshipIndex !== b.friendshipIndex) {
       return a.friendshipIndex - b.friendshipIndex;
     }
@@ -184,7 +234,7 @@ export async function runFriendzonePrint(options: PrintOptions): Promise<void> {
   });
 
   // Neutrals (closest to 0.5 absolute difference, then sameGame descending)
-  const neutrals = getTopK(pairs, amount, (a, b) => {
+  const neutrals = getTopK(filteredPairs, amount, (a, b) => {
     const distA = Math.abs(a.friendshipIndex - 0.5);
     const distB = Math.abs(b.friendshipIndex - 0.5);
     if (distA !== distB) {
