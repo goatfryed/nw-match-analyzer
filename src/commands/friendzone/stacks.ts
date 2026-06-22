@@ -17,7 +17,7 @@ interface SourceRecord {
   game: string;
   date: string;
   side: string;
-  name: string;
+  player: string;
 }
 
 function loadSourceRecords(): SourceRecord[] {
@@ -37,7 +37,7 @@ function loadSourceRecords(): SourceRecord[] {
     game: r.game,
     date: r.date,
     side: r.side,
-    name: r.name,
+    player: r.player,
   }));
 }
 
@@ -119,7 +119,7 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
   const playerGames = new Map<string, Set<string>>(); // player name -> set of uniqueMatchKeys
 
   for (const r of sourceRecords) {
-    if (!r.game || !r.side || !r.name) continue;
+    if (!r.game || !r.side || !r.player) continue;
     const matchKey = r.date ? `${r.game}_${r.date}` : r.game;
     const key = `${matchKey}:${r.side}`;
 
@@ -127,14 +127,14 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
       teamsMap.set(key, []);
     }
     const teamList = teamsMap.get(key)!;
-    if (!teamList.includes(r.name)) {
-      teamList.push(r.name);
+    if (!teamList.includes(r.player)) {
+      teamList.push(r.player);
     }
 
-    if (!playerGames.has(r.name)) {
-      playerGames.set(r.name, new Set());
+    if (!playerGames.has(r.player)) {
+      playerGames.set(r.player, new Set());
     }
-    playerGames.get(r.name)!.add(matchKey);
+    playerGames.get(r.player)!.add(matchKey);
   }
 
   console.log(`Analyzing stacks of sizes ${minSize} to ${maxSize} with mutual friendship >= ${friendshipThreshold.toFixed(4)}...`);

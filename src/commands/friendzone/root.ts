@@ -28,7 +28,7 @@ export async function runFriendzoneAnalysis(): Promise<void> {
   const fileContent = fs.readFileSync(csvPath, 'utf8');
 
   console.log('Parsing CSV data...');
-  const records: Array<{ game: string; name: string; side: string; [key: string]: string }> = parse(fileContent, {
+  const records: Array<{ game: string; player: string; side: string; [key: string]: string }> = parse(fileContent, {
     columns: true,
     skip_empty_lines: true,
     trim: true,
@@ -39,22 +39,22 @@ export async function runFriendzoneAnalysis(): Promise<void> {
   }
 
   const firstRecord = records[0];
-  if (!firstRecord.game || !firstRecord.name || !firstRecord.side) {
-    throw new Error(`CSV must contain 'game', 'name', and 'side' columns. Found columns: ${Object.keys(firstRecord).join(', ')}`);
+  if (!firstRecord.game || !firstRecord.player || !firstRecord.side) {
+    throw new Error(`CSV must contain 'game', 'player', and 'side' columns. Found columns: ${Object.keys(firstRecord).join(', ')}`);
   }
 
-  const games = new Map<string, Array<{ name: string; side: string }>>();
+  const games = new Map<string, Array<{ player: string; side: string }>>();
   const allPlayers = new Set<string>();
 
   for (const record of records) {
     const game = record.game;
     const date = record.date;
-    const name = record.name;
+    const player = record.player;
     const side = record.side;
 
-    if (!game || !name || !side) continue;
+    if (!game || !player || !side) continue;
 
-    allPlayers.add(name);
+    allPlayers.add(player);
 
     // Combine game and date to uniquely identify a match
     const matchKey = date ? `${game}_${date}` : game;
@@ -62,7 +62,7 @@ export async function runFriendzoneAnalysis(): Promise<void> {
     if (!games.has(matchKey)) {
       games.set(matchKey, []);
     }
-    games.get(matchKey)!.push({ name, side });
+    games.get(matchKey)!.push({ player, side });
   }
 
   console.log(`Found ${allPlayers.size} unique players across ${games.size} matches.`);
@@ -77,9 +77,9 @@ export async function runFriendzoneAnalysis(): Promise<void> {
       for (let j = i + 1; j < participants.length; j++) {
         const p2 = participants[j];
 
-        if (p1.name === p2.name) continue;
+        if (p1.player === p2.player) continue;
 
-        const [a, b] = p1.name < p2.name ? [p1.name, p2.name] : [p2.name, p1.name];
+        const [a, b] = p1.player < p2.player ? [p1.player, p2.player] : [p2.player, p1.player];
         const pairKey = `${a}:${b}`;
 
         sameMatchCount.set(pairKey, (sameMatchCount.get(pairKey) || 0) + 1);

@@ -1,7 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
-import { resolvePlayerName } from '../common.js';
 import config from '../../config.js';
 
 interface PlayerStats {
@@ -18,7 +17,7 @@ interface CsvRecord {
   date: string;
   side: string;
   win: string;
-  name: string;
+  player: string;
   [key: string]: string;
 }
 
@@ -83,10 +82,10 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
   for (const record of records) {
     const game = record.game;
     const date = record.date;
-    const name = record.name;
+    const player = record.player;
     const side = record.side;
 
-    if (!game || !name || !side) continue;
+    if (!game || !player || !side) continue;
 
     const matchKey = date ? `${game}_${date}` : game;
     if (!games.has(matchKey)) {
@@ -144,13 +143,13 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
       const blueOutcome = blueWon ? 1 : 0;
       const redOutcome = redWon ? 1 : 0;
 
-      // Separate players by team and resolve aliases
+      // Separate players by team using player column
       const bluePlayers = participants
         .filter((p) => p.side === 'blue')
-        .map((p) => resolvePlayerName(p.name));
+        .map((p) => p.player);
       const redPlayers = participants
         .filter((p) => p.side === 'red')
-        .map((p) => resolvePlayerName(p.name));
+        .map((p) => p.player);
 
       if (bluePlayers.length === 0 || redPlayers.length === 0) {
         // Cannot calculate average MMR for a team with 0 players
@@ -401,13 +400,11 @@ export async function runMmrShow(playerArg: string, options: { threshold?: numbe
     losses: parseInt(r.losses, 10),
   }));
 
-  // Resolve player name (handling aliases)
-  const resolvedName = resolvePlayerName(playerArg);
-  const targetLower = resolvedName.toLowerCase();
+  const targetLower = playerArg.trim().toLowerCase();
 
   const stats = players.find((p) => p.player.toLowerCase() === targetLower);
   if (!stats) {
-    console.log(`Player "${resolvedName}" should lock in and grind some OPRs! No matches found.`);
+    console.log(`${playerArg} should lock in and grind some OPRs! No matches found`);
     return;
   }
 

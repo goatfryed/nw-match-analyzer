@@ -25,8 +25,8 @@ export function loadPlayerGameCounts(): Map<string, number> {
 
   const playerGameCounts = new Map<string, number>();
   for (const r of sourceRecords) {
-    if (r.name) {
-      playerGameCounts.set(r.name, (playerGameCounts.get(r.name) || 0) + 1);
+    if (r.player) {
+      playerGameCounts.set(r.player, (playerGameCounts.get(r.player) || 0) + 1);
     }
   }
   return playerGameCounts;

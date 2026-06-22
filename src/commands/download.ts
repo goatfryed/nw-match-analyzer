@@ -2,7 +2,6 @@ import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 import config from '../../config.js';
-import { resolvePlayerName } from '../common.js';
 
 function arrayToCsv(rows: string[][]): string {
   return rows
@@ -61,18 +60,6 @@ export async function downloadSourceSheet(): Promise<void> {
   }
 
   console.log(`Fetched ${rows.length} rows. Converting to CSV...`);
-
-  // Resolve player name aliases
-  const headers = rows[0];
-  const nameIdx = headers.map((h) => (h || '').trim().toLowerCase()).indexOf('name');
-  if (nameIdx !== -1) {
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (row[nameIdx]) {
-        row[nameIdx] = resolvePlayerName(row[nameIdx]);
-      }
-    }
-  }
 
   const csvContent = arrayToCsv(rows);
 

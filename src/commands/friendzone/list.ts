@@ -1,6 +1,5 @@
 import { loadPlayerGameCounts, loadPairRecords, findExactCasing, PairRecord } from './common.js';
 import config from '../../../config.js';
-import { resolvePlayerName } from '../../common.js';
 
 interface ListOptions {
   threshold?: number;
@@ -84,19 +83,18 @@ export async function runFriendzoneList(
   let queriedPlayer: { name: string; gamesCount: number } | undefined;
 
   if (playerArg) {
-    const resolvedName = resolvePlayerName(playerArg);
-    const filterName = resolvedName.toLowerCase();
-    console.log(`Filtering relationships including player: "${resolvedName}"...`);
-    filteredPairs = filteredPairs.filter(p =>
-      p.player.toLowerCase() === filterName ||
-      p.other.toLowerCase() === filterName
-    );
-
+    const filterName = playerArg.trim().toLowerCase();
     const exactQueriedPlayerName = findExactCasing(filterName, playerGameCounts);
     if (!exactQueriedPlayerName) {
       console.log(`Player "${playerArg}" was not found in the dataset.`);
       return;
     }
+    console.log(`Filtering relationships including player: "${exactQueriedPlayerName}"...`);
+    filteredPairs = filteredPairs.filter(p =>
+      p.player.toLowerCase() === filterName ||
+      p.other.toLowerCase() === filterName
+    );
+
     const gamesCount = playerGameCounts.get(exactQueriedPlayerName) || 0;
     queriedPlayer = { name: exactQueriedPlayerName, gamesCount };
   }

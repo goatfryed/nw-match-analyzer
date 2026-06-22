@@ -1,5 +1,4 @@
 import { loadPlayerGameCounts, loadPairRecords, findExactCasing } from './common.js';
-import { resolvePlayerName } from '../../common.js';
 
 export async function runFriendzoneShow(
   playerArg: string,
@@ -8,11 +7,8 @@ export async function runFriendzoneShow(
   const playerGameCounts = loadPlayerGameCounts();
   const pairs = loadPairRecords();
 
-  const resolvedPlayer = resolvePlayerName(playerArg);
-  const resolvedOther = resolvePlayerName(otherArg);
-
-  const filterName1 = resolvedPlayer.toLowerCase();
-  const filterName2 = resolvedOther.toLowerCase();
+  const filterName1 = playerArg.trim().toLowerCase();
+  const filterName2 = otherArg.trim().toLowerCase();
 
   const exactPlayer1 = findExactCasing(filterName1, playerGameCounts);
   const exactPlayer2 = findExactCasing(filterName2, playerGameCounts);

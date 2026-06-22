@@ -16,10 +16,5 @@ export default {
         "matchThreshold": 5,
         "amount": 20,
         "sort": "descending"
-    },
-    "aliases": {
-        "goatfryed": ["Goatfryed", "goatfryd"],
-        "Tierlok": ["Tierlok", "Hopz"],
-        "RaptorLVV": ["RaptorL VV", "Raptor VV"],
     }
 }
