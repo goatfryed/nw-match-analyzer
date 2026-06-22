@@ -10,6 +10,7 @@ interface PlayerStats {
   games: number;
   wins: number;
   losses: number;
+  calibrationGames: number;
 }
 
 interface CsvRecord {
@@ -52,10 +53,11 @@ function arrayToCsv(rows: string[][]): string {
     .join('\n');
 }
 
-export async function calculateSourceMmr(options: { defaultRating?: number; kFactor?: number; generations?: number }): Promise<void> {
+export async function calculateSourceMmr(options: { defaultRating?: number; kFactor?: number; generations?: number; calibration?: number }): Promise<void> {
   const defaultRating = options.defaultRating ?? (config as any).mmr?.defaultRating ?? 1500;
   const kFactor = options.kFactor ?? (config as any).mmr?.kFactor ?? 32;
   const generations = options.generations ?? 1;
+  const calibration = options.calibration ?? 10;
 
   const sourceCsvPath = path.resolve(process.cwd(), '.tmp/source.csv');
   if (!fs.existsSync(sourceCsvPath)) {
@@ -103,21 +105,21 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
     })
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  console.log(`Processing ${sortedMatches.length} matches over ${generations} generation(s)...`);
+  console.log(`Processing ${sortedMatches.length} matches over ${generations} generation(s) with calibration threshold of ${calibration} game(s)...`);
 
   const playerStatsMap = new Map<string, PlayerStats>();
 
   function getOrCreatePlayer(name: string): PlayerStats {
     let stats = playerStatsMap.get(name);
     if (!stats) {
-      stats = { player: name, mmr: defaultRating, games: 0, wins: 0, losses: 0 };
+      stats = { player: name, mmr: defaultRating, games: 0, wins: 0, losses: 0, calibrationGames: 0 };
       playerStatsMap.set(name, stats);
     }
     return stats;
   }
 
   for (let gen = 1; gen <= generations; gen++) {
-    // Reset stats for all players before each generation, keeping their MMR
+    // Reset stats for all players before each generation, keeping their MMR and calibrationGames
     for (const stats of playerStatsMap.values()) {
       stats.games = 0;
       stats.wins = 0;
@@ -155,28 +157,56 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
         continue;
       }
 
-      // Average ratings
-      let blueSum = 0;
+      // Gather trust factor weights and stats for Blue
+      const blueWeights: number[] = [];
+      const blueStats: PlayerStats[] = [];
       for (const name of bluePlayers) {
-        blueSum += getOrCreatePlayer(name).mmr;
+        const stats = getOrCreatePlayer(name);
+        const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
+        blueWeights.push(w);
+        blueStats.push(stats);
       }
-      const blueAvg = blueSum / bluePlayers.length;
 
-      let redSum = 0;
-      for (const name of redPlayers) {
-        redSum += getOrCreatePlayer(name).mmr;
+      let blueWeightedMmrSum = 0;
+      let blueWeightSum = 0;
+      for (let i = 0; i < bluePlayers.length; i++) {
+        const w = blueWeights[i];
+        blueWeightedMmrSum += w * blueStats[i].mmr;
+        blueWeightSum += w;
       }
-      const redAvg = redSum / redPlayers.length;
+      const blueAvg = blueWeightedMmrSum / blueWeightSum;
+
+      // Gather trust factor weights and stats for Red
+      const redWeights: number[] = [];
+      const redStats: PlayerStats[] = [];
+      for (const name of redPlayers) {
+        const stats = getOrCreatePlayer(name);
+        const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
+        redWeights.push(w);
+        redStats.push(stats);
+      }
+
+      let redWeightedMmrSum = 0;
+      let redWeightSum = 0;
+      for (let i = 0; i < redPlayers.length; i++) {
+        const w = redWeights[i];
+        redWeightedMmrSum += w * redStats[i].mmr;
+        redWeightSum += w;
+      }
+      const redAvg = redWeightedMmrSum / redWeightSum;
 
       // Expected outcomes
       const expectedBlue = 1 / (1 + Math.pow(10, (redAvg - blueAvg) / 400));
       const expectedRed = 1 - expectedBlue;
 
-      // Update stats
-      for (const name of bluePlayers) {
-        const stats = getOrCreatePlayer(name);
-        stats.mmr += kFactor * (blueOutcome - expectedBlue);
+      // Update Blue team stats and ratings
+      for (let i = 0; i < bluePlayers.length; i++) {
+        const stats = blueStats[i];
+        const w = blueWeights[i];
+        const personalK = kFactor * (2.0 - w);
+        stats.mmr += personalK * (blueOutcome - expectedBlue);
         stats.games += 1;
+        stats.calibrationGames += 1;
         if (blueWon) {
           stats.wins += 1;
         } else {
@@ -184,10 +214,14 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
         }
       }
 
-      for (const name of redPlayers) {
-        const stats = getOrCreatePlayer(name);
-        stats.mmr += kFactor * (redOutcome - expectedRed);
+      // Update Red team stats and ratings
+      for (let i = 0; i < redPlayers.length; i++) {
+        const stats = redStats[i];
+        const w = redWeights[i];
+        const personalK = kFactor * (2.0 - w);
+        stats.mmr += personalK * (redOutcome - expectedRed);
         stats.games += 1;
+        stats.calibrationGames += 1;
         if (redWon) {
           stats.wins += 1;
         } else {
@@ -217,6 +251,18 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
 
   console.log(`Writing MMR data to ${outputPath}...`);
   fs.writeFileSync(outputPath, arrayToCsv(csvRows), 'utf8');
+
+  // Save metadata JSON
+  const metaPath = path.join(tmpDir, 'mmr_meta.json');
+  const metadata = {
+    totalGames: sortedMatches.length,
+    generations,
+    calibration,
+    defaultRating,
+    kFactor
+  };
+  fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
+
   console.log('✅ MMR calculation complete.');
 }
 
@@ -262,7 +308,24 @@ export async function runMmrList(options: { threshold?: number; amount?: number;
 
   const displayed = filtered.slice(0, amount);
 
-  console.log(`\n=== MMR Leaderboard (Sorted: ${ascending ? 'Ascending' : 'Descending'}) ===`);
+  // Read total games observed from metadata JSON
+  let totalGamesObserved = 0;
+  const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
+  if (fs.existsSync(metaPath)) {
+    try {
+      const metaContent = fs.readFileSync(metaPath, 'utf8');
+      const meta = JSON.parse(metaContent);
+      totalGamesObserved = meta.totalGames || 0;
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  const headingText = totalGamesObserved > 0
+    ? `=== MMR Leaderboard (Sorted: ${ascending ? 'Ascending' : 'Descending'} | Games: ${totalGamesObserved}) ===`
+    : `=== MMR Leaderboard (Sorted: ${ascending ? 'Ascending' : 'Descending'}) ===`;
+
+  console.log(`\n${headingText}`);
   console.log(
     '  ' +
     'Rank'.padEnd(6) +

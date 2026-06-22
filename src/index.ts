@@ -130,6 +130,7 @@ mmr
   .option('-d, --default-rating <number>', 'default rating', (val) => parseFloat(val))
   .option('-k, --k-factor <number>', 'K-factor constant', (val) => parseFloat(val))
   .option('--generations <number>', 'number of generations', (val) => parseInt(val, 10))
+  .option('--calibration <number>', 'number of games for full calibration', (val) => parseInt(val, 10))
   .action(async (options) => {
     try {
       await calculateSourceMmr(options);
