@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.png
+*.mp4
+*.log
+.DS_Store
+.tmp/
+.vscode/*
+.env.local
+credentials.json
