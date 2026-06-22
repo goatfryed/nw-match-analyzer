@@ -63,7 +63,8 @@ friendzone
   .command('list [player]')
   .description('Print sorted summary of top friends, enemies, and neutrals')
   .option('-t, --threshold <number>', 'minimum games played together', (val) => parseInt(val, 10))
-  .option('-a, --amount <number>', 'number of pairs to print', (val) => parseInt(val, 10))
+  .option('-n, --lines <number>', 'number of pairs to print', (val) => parseInt(val, 10))
+  .option('-s, --skip <number>', 'number of pairs to skip', (val) => parseInt(val, 10))
   .action(async (player, options) => {
     try {
       await runFriendzoneList(player, options);
@@ -144,8 +145,10 @@ mmr
   .command('list')
   .description('Print sorted summary of players MMR')
   .option('-t, --threshold <number>', 'minimum games played', (val) => parseInt(val, 10))
-  .option('-a, --amount <number>', 'number of players to print', (val) => parseInt(val, 10))
-  .option('-s, --sort <string>', 'sort order (ascending or descending)')
+  .option('-n, --lines <number>', 'number of players to print', (val) => parseInt(val, 10))
+  .option('-s, --skip <number>', 'number of players to skip', (val) => parseInt(val, 10))
+  .option('--sort <string>', 'sort order (ascending or descending)')
+  .option('--tail', 'display from the tail (bottom) of the leaderboard list')
   .action(async (options) => {
     try {
       await runMmrList(options);

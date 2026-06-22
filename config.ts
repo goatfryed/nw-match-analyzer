@@ -12,7 +12,7 @@ export default {
     },
     "mmr": {
         "defaultRating": 1500,
-        "kFactor": 32,
+        "kFactor": 40,
         "matchThreshold": 5,
         "amount": 20,
         "sort": "descending"
@@ -20,5 +20,6 @@ export default {
     "aliases": {
         "goatfryed": ["Goatfryed", "goatfryd"],
         "Tierlok": ["Tierlok", "Hopz"],
+        "RaptorLVV": ["RaptorL VV", "Raptor VV"],
     }
 }

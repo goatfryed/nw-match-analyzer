@@ -4,7 +4,8 @@ import { resolvePlayerName } from '../../common.js';
 
 interface ListOptions {
   threshold?: number;
-  amount?: number;
+  lines?: number;
+  skip?: number;
 }
 
 function printTable(
@@ -74,7 +75,8 @@ export async function runFriendzoneList(
 
   let filteredPairs = pairs;
   const threshold = options.threshold ?? config.friendzone?.matchThreshold ?? 5;
-  const amount = options.amount ?? config.friendzone?.amount ?? 10;
+  const lines = options.lines ?? config.friendzone?.amount ?? 10;
+  const skip = options.skip ?? 0;
 
   console.log(`Filtering relationships with >= ${threshold} games played together...`);
   filteredPairs = filteredPairs.filter(p => p.sameGame >= threshold);
@@ -100,38 +102,17 @@ export async function runFriendzoneList(
   }
 
   console.log(`Total relationships found: ${filteredPairs.length}`);
-
-  // Bounded insertion helper for O(N * K) selection
-  function getTopK<T>(items: T[], k: number, compareFn: (a: T, b: T) => number): T[] {
-    const result: T[] = [];
-    for (const item of items) {
-      let insertIdx = result.length;
-      for (let i = 0; i < result.length; i++) {
-        if (compareFn(item, result[i]) < 0) {
-          insertIdx = i;
-          break;
-        }
-      }
-      if (insertIdx < k) {
-        result.splice(insertIdx, 0, item);
-        if (result.length > k) {
-          result.pop();
-        }
-      }
-    }
-    return result;
-  }
+  console.log(`Printing top Friends, Enemies, and Neutrals (Skip: ${skip}, Lines: ${lines})...`);
 
   // Friends (highest friendshipIndex descending, then sameGame descending)
-  const friends = getTopK(filteredPairs, amount, (a, b) => {
+  const sortedFriends = [...filteredPairs].sort((a, b) => {
     if (b.friendshipIndex !== a.friendshipIndex) {
       return b.friendshipIndex - a.friendshipIndex;
     }
     return b.sameGame - a.sameGame;
   });
-
   // Enemies (lowest friendshipIndex ascending, then sameGame descending)
-  const enemies = getTopK(filteredPairs, amount, (a, b) => {
+  const sortedEnemies = [...filteredPairs].sort((a, b) => {
     if (a.friendshipIndex !== b.friendshipIndex) {
       return a.friendshipIndex - b.friendshipIndex;
     }
@@ -139,7 +120,7 @@ export async function runFriendzoneList(
   });
 
   // Neutrals (closest to 0.5 absolute difference, then sameGame descending)
-  const neutrals = getTopK(filteredPairs, amount, (a, b) => {
+  const sortedNeutrals = [...filteredPairs].sort((a, b) => {
     const distA = Math.abs(a.friendshipIndex - 0.5);
     const distB = Math.abs(b.friendshipIndex - 0.5);
     if (distA !== distB) {
@@ -148,6 +129,10 @@ export async function runFriendzoneList(
     return b.sameGame - a.sameGame;
   });
 
+  const friends = sortedFriends.slice(skip, skip + lines);
+  const enemies = sortedEnemies.slice(skip, skip + lines);
+  const neutrals = sortedNeutrals.slice(skip, skip + lines);
+
   // Calculate max digits of sameGame across all displayed items
   const allPrintedItems = [...friends, ...enemies, ...neutrals];
   const maxFriendshipDigits = allPrintedItems.reduce(
@@ -155,12 +140,12 @@ export async function runFriendzoneList(
     0
   );
 
-  console.log(`\n=== Top ${friends.length} Friends ===`);
+  console.log(`\n=== Friends ===`);
   printTable(friends, maxFriendshipDigits, queriedPlayer);
 
-  console.log(`\n=== Top ${enemies.length} Enemies ===`);
+  console.log(`\n=== Enemies ===`);
   printTable(enemies, maxFriendshipDigits, queriedPlayer);
 
-  console.log(`\n=== Top ${neutrals.length} Neutrals ===`);
+  console.log(`\n=== Neutrals ===`);
   printTable(neutrals, maxFriendshipDigits, queriedPlayer);
 }

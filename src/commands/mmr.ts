@@ -266,9 +266,10 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
   console.log('✅ MMR calculation complete.');
 }
 
-export async function runMmrList(options: { threshold?: number; amount?: number; sort?: string }): Promise<void> {
+export async function runMmrList(options: { threshold?: number; lines?: number; skip?: number; sort?: string; tail?: boolean }): Promise<void> {
   const threshold = options.threshold ?? (config as any).mmr?.matchThreshold ?? 5;
-  const amount = options.amount ?? (config as any).mmr?.amount ?? 20;
+  const lines = options.lines ?? (config as any).mmr?.amount ?? 20;
+  const skip = options.skip ?? 0;
   const sortInput = (options.sort || (config as any).mmr?.sort || 'descending').toLowerCase();
 
   let ascending = true;
@@ -306,7 +307,16 @@ export async function runMmrList(options: { threshold?: number; amount?: number;
   // Sort by MMR
   filtered.sort((a, b) => (ascending ? a.mmr - b.mmr : b.mmr - a.mmr));
 
-  const displayed = filtered.slice(0, amount);
+  let displayed: PlayerStats[] = [];
+  let startIdx = 0;
+  if (options.tail) {
+    startIdx = Math.max(0, filtered.length - skip - lines);
+    const endIdx = Math.max(0, filtered.length - skip);
+    displayed = filtered.slice(startIdx, endIdx);
+  } else {
+    startIdx = skip;
+    displayed = filtered.slice(skip, skip + lines);
+  }
 
   // Read total games observed from metadata JSON
   let totalGamesObserved = 0;
@@ -321,9 +331,14 @@ export async function runMmrList(options: { threshold?: number; amount?: number;
     }
   }
 
-  const headingText = totalGamesObserved > 0
-    ? `=== MMR Leaderboard (Sorted: ${ascending ? 'Ascending' : 'Descending'} | Games: ${totalGamesObserved}) ===`
-    : `=== MMR Leaderboard (Sorted: ${ascending ? 'Ascending' : 'Descending'}) ===`;
+  const headingParts = [
+    `Sorted: ${ascending ? 'Ascending' : 'Descending'}`,
+    `Players: ${filtered.length}`
+  ];
+  if (totalGamesObserved > 0) {
+    headingParts.push(`Games: ${totalGamesObserved}`);
+  }
+  const headingText = `=== MMR Leaderboard (${headingParts.join(' | ')}) ===`;
 
   console.log(`\n${headingText}`);
   console.log(
@@ -340,7 +355,7 @@ export async function runMmrList(options: { threshold?: number; amount?: number;
 
   displayed.forEach((p, idx) => {
     const winRate = p.games > 0 ? (p.wins / p.games) * 100 : 0;
-    const rankStr = String(idx + 1);
+    const rankStr = String(startIdx + idx + 1);
     console.log(
       '  ' +
       rankStr.padEnd(6) +
@@ -353,8 +368,8 @@ export async function runMmrList(options: { threshold?: number; amount?: number;
     );
   });
 
-  if (filtered.length > amount) {
-    console.log(`\n  ... and ${filtered.length - amount} more players.`);
+  if (filtered.length > displayed.length) {
+    console.log(`\n  ... and ${filtered.length - displayed.length} more players.`);
   }
 }
 
