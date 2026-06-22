@@ -295,11 +295,13 @@ export async function runMmrList(options: { threshold?: number; amount?: number;
   }
 }
 
-export async function runMmrShow(playerArg: string): Promise<void> {
+export async function runMmrShow(playerArg: string, options: { threshold?: number } = {}): Promise<void> {
   if (!playerArg) {
     console.error('Error: Player name is required.');
     process.exit(1);
   }
+
+  const threshold = options.threshold ?? (config as any).mmr?.matchThreshold ?? 5;
 
   const mmrCsvPath = path.resolve(process.cwd(), '.tmp/mmr.csv');
   if (!fs.existsSync(mmrCsvPath)) {
@@ -331,10 +333,22 @@ export async function runMmrShow(playerArg: string): Promise<void> {
     return;
   }
 
+  // Calculate rank within threshold (effective threshold is the minimum of player's games and option threshold)
+  const effectiveThreshold = Math.min(stats.games, threshold);
+  const filtered = players.filter((p) => p.games >= effectiveThreshold);
+  filtered.sort((a, b) => b.mmr - a.mmr); // Descending order for ranking
+
+  let rankStr = 'N/A';
+  const rankIdx = filtered.findIndex((p) => p.player.toLowerCase() === targetLower);
+  if (rankIdx !== -1) {
+    rankStr = `${rankIdx + 1}/${filtered.length}`;
+  }
+
   const winRate = stats.games > 0 ? (stats.wins / stats.games) * 100 : 0;
 
   console.log(`\n=== Player Profile: ${stats.player} ===`);
   console.log(`  MMR:          ${stats.mmr.toFixed(2)}`);
+  console.log(`  Rank:         ${rankStr}`);
   console.log(`  Games Played: ${stats.games}`);
   console.log(`  Wins:         ${stats.wins}`);
   console.log(`  Losses:       ${stats.losses}`);

@@ -157,9 +157,10 @@ mmr
 mmr
   .command('show <player>')
   .description('Show MMR profile of a specific player')
-  .action(async (player) => {
+  .option('-t, --threshold <number>', 'minimum games played threshold', (val) => parseInt(val, 10))
+  .action(async (player, options) => {
     try {
-      await runMmrShow(player);
+      await runMmrShow(player, options);
     } catch (error) {
       console.error('Error running MMR show:', error);
       process.exit(1);
