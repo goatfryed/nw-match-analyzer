@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
-import config from '../../config.js';
+import config from '../../../config.js';
 
 function arrayToCsv(rows: string[][]): string {
   return rows

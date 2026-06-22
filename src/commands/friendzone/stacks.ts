@@ -1,15 +1,5 @@
-import fs from 'fs';
-import path from 'path';
-import { parse } from 'csv-parse/sync';
-import config from '../../config.js';
-
-interface PairRecord {
-  player: string;
-  other: string;
-  sameGame: number;
-  sameSide: number;
-  friendshipIndex: number;
-}
+import { loadPairRecords } from './common.js';
+import config from '../../../config.js';
 
 interface StacksOptions {
   threshold?: number;
@@ -75,17 +65,7 @@ function getAverageFriendship(clique: string[], pairFriendshipIndex: Map<string,
 }
 
 export async function runFriendzoneStacks(options: StacksOptions): Promise<void> {
-  const csvPath = path.resolve(process.cwd(), '.tmp/friendzone.csv');
-  if (!fs.existsSync(csvPath)) {
-    throw new Error(`Friendzone CSV not found at ${csvPath}. Please run 'friendzone' generate command first.`);
-  }
-
-  const fileContent = fs.readFileSync(csvPath, 'utf8');
-  const records = parse(fileContent, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-  });
+  const pairs = loadPairRecords();
 
   const threshold = options.threshold ?? config.friendzone?.matchThreshold ?? 5;
   const friendshipThreshold = options.thresholdFriendship ?? config.friendzone?.cliqueThreshold ?? 0.75;
@@ -99,11 +79,11 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
   const pairFriendshipIndex = new Map<string, number>();
   const allPlayers = new Set<string>();
 
-  for (const r of records) {
+  for (const r of pairs) {
     const player = r.player;
     const other = r.other;
-    const sameGame = parseInt(r['same game'], 10);
-    const friendshipIndex = parseFloat(r['friendship index']);
+    const sameGame = r.sameGame;
+    const friendshipIndex = r.friendshipIndex;
 
     const key = `${player}:${other}`;
     pairFriendshipIndex.set(key, friendshipIndex);
@@ -126,7 +106,6 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
   bronKerbosch(new Set(), new Set(allPlayers), new Set(), adj, cliques);
 
   // Group cliques by size
-  // We will bucket them into size 3, size 4, and size 5 (or larger)
   const sizeBuckets = new Map<number, Array<{ players: string[]; avgFriendship: number }>>();
 
   for (const clique of cliques) {
@@ -135,7 +114,6 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
     const sortedClique = clique.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     const avgFriendship = getAverageFriendship(sortedClique, pairFriendshipIndex);
 
-    // If clique size is larger than maxSize, we group it in the maxSize bucket (representing maxSize or larger)
     const bucketSize = clique.length >= maxSize ? maxSize : clique.length;
 
     if (!sizeBuckets.has(bucketSize)) {
@@ -147,7 +125,6 @@ export async function runFriendzoneStacks(options: StacksOptions): Promise<void>
   // Print buckets
   for (let s = minSize; s <= maxSize; s++) {
     const bucket = sizeBuckets.get(s) || [];
-    // Sort by average friendship descending
     bucket.sort((a, b) => b.avgFriendship - a.avgFriendship);
 
     const titleSuffix = s === maxSize ? ' (or larger)' : '';

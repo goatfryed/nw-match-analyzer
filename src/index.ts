@@ -2,9 +2,10 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { Command } from 'commander';
 import { downloadSourceSheet } from './commands/download.js';
-import { runFriendzoneAnalysis } from './commands/friendzone.js';
-import { runFriendzoneShow } from './commands/show.js';
-import { runFriendzoneStacks } from './commands/stacks.js';
+import { runFriendzoneAnalysis } from './commands/friendzone/root.js';
+import { runFriendzoneList } from './commands/friendzone/list.js';
+import { runFriendzoneShow } from './commands/friendzone/show.js';
+import { runFriendzoneStacks } from './commands/friendzone/stacks.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -46,13 +47,25 @@ friendzone
   });
 
 friendzone
-  .command('show [player] [other]')
+  .command('list [player]')
   .description('Print sorted summary of top friends, enemies, and neutrals')
   .option('-t, --threshold <number>', 'minimum games played together', (val) => parseInt(val, 10))
   .option('-a, --amount <number>', 'number of pairs to print', (val) => parseInt(val, 10))
-  .action(async (player, other, options) => {
+  .action(async (player, options) => {
     try {
-      await runFriendzoneShow(player, other, options);
+      await runFriendzoneList(player, options);
+    } catch (error) {
+      console.error('Error running friendzone list:', error);
+      process.exit(1);
+    }
+  });
+
+friendzone
+  .command('show <player> <other>')
+  .description('Show details of a specific relationship')
+  .action(async (player, other) => {
+    try {
+      await runFriendzoneShow(player, other);
     } catch (error) {
       console.error('Error running friendzone show:', error);
       process.exit(1);
