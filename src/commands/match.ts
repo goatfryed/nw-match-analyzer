@@ -5,6 +5,7 @@ import config from '../../config.js';
 
 interface CsvMatchRecord {
   gameId: string;
+  date: string;
   winner: string;
   mmrBlue: number;
   avgMmrBlue: number;
@@ -36,6 +37,7 @@ export async function runMatchList(options: {
 
   const matches: CsvMatchRecord[] = records.map((r: any) => ({
     gameId: r['game id'],
+    date: r['date'] || '',
     winner: r['winner'],
     mmrBlue: parseFloat(r['mmr blue']),
     avgMmrBlue: parseFloat(r['avg mmr blue']),
@@ -58,6 +60,7 @@ export async function runMatchList(options: {
   console.log(
     '  ' +
     'Game ID'.padEnd(20) +
+    'Date'.padEnd(20) +
     'Winner'.padEnd(8) +
     'Favorite'.padEnd(10) +
     'Blue MMR'.padEnd(12) +
@@ -67,7 +70,7 @@ export async function runMatchList(options: {
     'Red Avg'.padEnd(12) +
     'Red Coh'
   );
-  console.log('  ' + '-'.repeat(105));
+  console.log('  ' + '-'.repeat(125));
 
   displayed.forEach((m) => {
     const favorite = m.mmrBlue - m.mmrRed;
@@ -77,6 +80,7 @@ export async function runMatchList(options: {
     console.log(
       '  ' +
       m.gameId.padEnd(20) +
+      m.date.padEnd(20) +
       m.winner.padEnd(8) +
       favStr.padEnd(10) +
       m.mmrBlue.toFixed(2).padEnd(12) +
@@ -152,6 +156,7 @@ export async function runMatchShow(matchRef: string): Promise<void> {
 
   const matches: CsvMatchRecord[] = records.map((r: any) => ({
     gameId: r['game id'],
+    date: r['date'] || '',
     winner: r['winner'],
     mmrBlue: parseFloat(r['mmr blue']),
     avgMmrBlue: parseFloat(r['avg mmr blue']),
@@ -208,6 +213,7 @@ export async function runMatchShow(matchRef: string): Promise<void> {
   const cohRedStr = (targetMatch.cohesionRed >= 0 ? '+' : '') + targetMatch.cohesionRed.toFixed(2);
 
   console.log(`\n=== Match Details: ${targetMatch.gameId} ===`);
+  console.log(`  Date:                 ${targetMatch.date}`);
   console.log(`  Winner:               ${targetMatch.winner.toUpperCase()}`);
   console.log(`  Favorite:             ${favStr}`);
   console.log('');

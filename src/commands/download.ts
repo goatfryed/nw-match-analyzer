@@ -1,7 +1,7 @@
-import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path';
 import config from '../../config.js';
+import { getSheetsClient, getSheetTitle } from '../common/sheets.js';
 
 function arrayToCsv(rows: string[][]): string {
   return rows
@@ -20,35 +20,20 @@ function arrayToCsv(rows: string[][]): string {
 }
 
 export async function downloadSourceSheet(): Promise<void> {
-  const { spreadsheetId, sourceSheetId } = config;
+  const spreadsheetId = config.sheets?.spreadsheetId;
+  const scoreboardSheetId = config.sheets?.scoreboardSheetId;
+
+  if (!spreadsheetId || scoreboardSheetId === undefined) {
+    throw new Error('Spreadsheet configurations (sheets.spreadsheetId, sheets.scoreboardSheetId) are missing in config.');
+  }
 
   console.log('Authenticating with Google APIs...');
-  const auth = new google.auth.GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
-  });
+  const sheetsClient = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets.readonly']);
 
-  const sheets = google.sheets({ version: 'v4', auth });
-
-  console.log(`Fetching spreadsheet metadata for ID: ${spreadsheetId}...`);
-  const spreadsheet = await sheets.spreadsheets.get({
-    spreadsheetId,
-  });
-
-  const sheet = spreadsheet.data.sheets?.find(
-    (s) => s.properties?.sheetId === sourceSheetId
-  );
-
-  if (!sheet) {
-    throw new Error(`Sheet with ID ${sourceSheetId} not found in spreadsheet.`);
-  }
-
-  const sheetTitle = sheet.properties?.title;
-  if (!sheetTitle) {
-    throw new Error(`Sheet with ID ${sourceSheetId} does not have a valid title.`);
-  }
+  const sheetTitle = await getSheetTitle(sheetsClient, spreadsheetId, scoreboardSheetId);
 
   console.log(`Fetching data from sheet: "${sheetTitle}"...`);
-  const response = await sheets.spreadsheets.values.get({
+  const response = await sheetsClient.spreadsheets.values.get({
     spreadsheetId,
     range: sheetTitle,
   });

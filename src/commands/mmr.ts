@@ -212,13 +212,14 @@ export async function calculateSourceMmr(options: {
   const keptMatches = previousMatchRecords.filter((r) => prefixGameIds.has(r['game id']));
 
   const matchesCsvRows: string[][] = [
-    ['game id', 'winner', 'mmr blue', 'avg mmr blue', 'cohesion blue', 'mmr red', 'avg mmr red', 'cohesion red']
+    ['game id', 'date', 'winner', 'mmr blue', 'avg mmr blue', 'cohesion blue', 'mmr red', 'avg mmr red', 'cohesion red']
   ];
 
   // Add kept matches
   for (const r of keptMatches) {
     matchesCsvRows.push([
       r['game id'],
+      r['date'] || '',
       r['winner'],
       r['mmr blue'],
       r['avg mmr blue'],
@@ -233,6 +234,7 @@ export async function calculateSourceMmr(options: {
   for (const m of processedMatches) {
     matchesCsvRows.push([
       m.gameId,
+      m.date,
       m.winner,
       m.mmrBlue.toFixed(2),
       m.avgMmrBlue.toFixed(2),

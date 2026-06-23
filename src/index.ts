@@ -9,6 +9,7 @@ import { runFriendzoneStacks } from './commands/friendzone/stacks.js';
 import { validateSourceData } from './commands/validate.js';
 import { calculateSourceMmr, runMmrList, runMmrShow } from './commands/mmr.js';
 import { runMatchList, runMatchShow } from './commands/match.js';
+import { uploadCsvSheet } from './commands/upload.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -40,6 +41,18 @@ program
       await validateSourceData();
     } catch (error) {
       console.error('Error running validation:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('upload [type]')
+  .description('Upload local CSV data to Google Sheets (e.g. matches)')
+  .action(async (type) => {
+    try {
+      await uploadCsvSheet(type);
+    } catch (error) {
+      console.error('Error running upload:', error);
       process.exit(1);
     }
   });

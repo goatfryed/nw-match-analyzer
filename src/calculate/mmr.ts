@@ -109,6 +109,7 @@ function resolveIndex(
 
 export interface MatchRecord {
   gameId: string;
+  date: string;
   winner: 'blue' | 'red';
   mmrBlue: number;
   avgMmrBlue: number;
@@ -170,6 +171,21 @@ export function calculateMmrAndFriendship(
       return { matchKey, participants, date: dateObj, gameId };
     })
     .sort((a, b) => a.date.getTime() - b.date.getTime());
+
+  // Check for duplicate game IDs across matches
+  const gameIdToKeys = new Map<string, string[]>();
+  for (const m of sortedMatches) {
+    if (!gameIdToKeys.has(m.gameId)) {
+      gameIdToKeys.set(m.gameId, []);
+    }
+    gameIdToKeys.get(m.gameId)!.push(m.matchKey);
+  }
+
+  for (const [gameId, keys] of gameIdToKeys.entries()) {
+    if (keys.length > 1) {
+      console.warn(`⚠️ Warning: Duplicate Game ID "${gameId}" found across multiple matches: ${keys.join(', ')}`);
+    }
+  }
 
   // Find index of previous matchHead
   const matchHeadIndex = previousMatchHead
@@ -307,8 +323,10 @@ export function calculateMmrAndFriendship(
       const redEffective = redAvg + redCohesionBonus;
 
       if (gen === generations) {
+        const matchDateStr = match.participants[0]?.date || '';
         processedMatches.push({
           gameId: match.gameId,
+          date: matchDateStr,
           winner: blueWon ? 'blue' : 'red',
           mmrBlue: blueEffective,
           avgMmrBlue: blueAvg,
