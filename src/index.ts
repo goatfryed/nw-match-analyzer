@@ -139,6 +139,7 @@ mmr
   .option('-s, --skip <number>', 'number of players to skip', (val) => parseInt(val, 10))
   .option('--sort <string>', 'sort order (ascending or descending)')
   .option('--tail', 'display from the tail (bottom) of the leaderboard list')
+  .option('--delta', 'sort leaderboard by delta MMR')
   .action(async (options) => {
     try {
       await runMmrList(options);

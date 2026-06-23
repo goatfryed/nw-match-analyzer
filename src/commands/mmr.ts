@@ -139,17 +139,29 @@ export async function calculateSourceMmr(options: {
     fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  // 1. Save ratings to .tmp/mmr.csv with delta values
-  const mmrCsvRows: string[][] = [['player', 'mmr', 'games', 'wins', 'losses', 'delta']];
+  // 1. Save ratings to .tmp/mmr.csv with delta values and ranks
+  // Sort by MMR descending first to assign ranks
+  const rankedPlayers = [...players].sort((a, b) => b.mmr - a.mmr);
+  const playerRankMap = new Map<string, number>();
+  rankedPlayers.forEach((p, idx) => {
+    playerRankMap.set(p.player, idx + 1);
+  });
+
+  // Now sort players alphabetically by name
+  players.sort((a, b) => a.player.localeCompare(b.player, undefined, { sensitivity: 'base' }));
+
+  const mmrCsvRows: string[][] = [['player', 'mmr', 'rank', 'games', 'wins', 'losses', 'delta']];
   for (const stats of players) {
     const prev = previousPlayers.get(stats.player);
     const prevMmr = prev ? prev.mmr : defaultRating;
     const deltaVal = stats.mmr - prevMmr;
     const deltaStr = (deltaVal >= 0 ? '+' : '') + deltaVal.toFixed(2);
+    const rank = playerRankMap.get(stats.player) || 0;
 
     mmrCsvRows.push([
       stats.player,
       stats.mmr.toFixed(2),
+      String(rank),
       String(stats.games),
       String(stats.wins),
       String(stats.losses),
@@ -206,7 +218,24 @@ export async function calculateSourceMmr(options: {
   console.log('✅ MMR and Friendzone calculations complete.');
 }
 
-export async function runMmrList(options: { threshold?: number; lines?: number; skip?: number; sort?: string; tail?: boolean }): Promise<void> {
+interface CsvPlayerStats {
+  player: string;
+  mmr: number;
+  rank: number;
+  games: number;
+  wins: number;
+  losses: number;
+  delta: number;
+}
+
+export async function runMmrList(options: {
+  threshold?: number;
+  lines?: number;
+  skip?: number;
+  sort?: string;
+  tail?: boolean;
+  delta?: boolean;
+}): Promise<void> {
   const threshold = options.threshold ?? (config as any).mmr?.matchThreshold ?? 5;
   const lines = options.lines ?? (config as any).mmr?.amount ?? 20;
   const skip = options.skip ?? 0;
@@ -224,7 +253,7 @@ export async function runMmrList(options: { threshold?: number; lines?: number; 
 
   const mmrCsvPath = path.resolve(process.cwd(), '.tmp/mmr.csv');
   if (!fs.existsSync(mmrCsvPath)) {
-    throw new Error(`MMR CSV not found at ${mmrCsvPath}. Please run 'mmr calculate' first.`);
+    throw new Error(`MMR CSV not found at ${mmrCsvPath}. Please run 'calculate' first.`);
   }
 
   const fileContent = fs.readFileSync(mmrCsvPath, 'utf8');
@@ -234,27 +263,39 @@ export async function runMmrList(options: { threshold?: number; lines?: number; 
     trim: true,
   });
 
-  const players: PlayerStats[] = records.map((r: any) => ({
+  const players: CsvPlayerStats[] = records.map((r: any) => ({
     player: r.player,
     mmr: parseFloat(r.mmr),
+    rank: parseInt(r.rank, 10),
     games: parseInt(r.games, 10),
     wins: parseInt(r.wins, 10),
     losses: parseInt(r.losses, 10),
+    delta: parseFloat(r.delta) || 0.0,
   }));
 
   const filtered = players.filter((p) => p.games >= threshold);
 
-  // Sort by MMR
-  filtered.sort((a, b) => (ascending ? a.mmr - b.mmr : b.mmr - a.mmr));
+  // Assign dynamic MMR rank within the filtered subset
+  // First sort by MMR descending to get the ranks
+  const sortedByMmr = [...filtered].sort((a, b) => b.mmr - a.mmr);
+  const playerRankMap = new Map<string, number>();
+  sortedByMmr.forEach((p, idx) => {
+    playerRankMap.set(p.player, idx + 1);
+  });
 
-  let displayed: PlayerStats[] = [];
-  let startIdx = 0;
+  // Sort by MMR or Delta MMR
+  if (options.delta) {
+    filtered.sort((a, b) => (ascending ? a.delta - b.delta : b.delta - a.delta));
+  } else {
+    filtered.sort((a, b) => (ascending ? a.mmr - b.mmr : b.mmr - a.mmr));
+  }
+
+  let displayed: CsvPlayerStats[] = [];
   if (options.tail) {
-    startIdx = Math.max(0, filtered.length - skip - lines);
+    const startIdx = Math.max(0, filtered.length - skip - lines);
     const endIdx = Math.max(0, filtered.length - skip);
     displayed = filtered.slice(startIdx, endIdx);
   } else {
-    startIdx = skip;
     displayed = filtered.slice(skip, skip + lines);
   }
 
@@ -272,7 +313,7 @@ export async function runMmrList(options: { threshold?: number; lines?: number; 
   }
 
   const headingParts = [
-    `Sorted: ${ascending ? 'Ascending' : 'Descending'}`,
+    `Sorted: ${options.delta ? 'Delta ' : ''}${ascending ? 'Ascending' : 'Descending'}`,
     `Players: ${filtered.length}`
   ];
   if (totalGamesObserved > 0) {
@@ -289,22 +330,25 @@ export async function runMmrList(options: { threshold?: number; lines?: number; 
     'Games'.padEnd(8) +
     'Wins'.padEnd(6) +
     'Losses'.padEnd(8) +
-    'Win Rate'
+    'Win Rate'.padEnd(10) +
+    'Delta'
   );
-  console.log('  ' + '-'.repeat(75));
+  console.log('  ' + '-'.repeat(80));
 
-  displayed.forEach((p, idx) => {
+  displayed.forEach((p) => {
     const winRate = p.games > 0 ? (p.wins / p.games) * 100 : 0;
-    const rankStr = String(startIdx + idx + 1);
+    const deltaStr = (p.delta >= 0 ? '+' : '') + p.delta.toFixed(2);
+    const dynamicRank = playerRankMap.get(p.player) || 0;
     console.log(
       '  ' +
-      rankStr.padEnd(6) +
+      String(dynamicRank).padEnd(6) +
       p.player.padEnd(25) +
       p.mmr.toFixed(2).padEnd(10) +
       String(p.games).padEnd(8) +
       String(p.wins).padEnd(6) +
       String(p.losses).padEnd(8) +
-      `${winRate.toFixed(1)}%`
+      `${winRate.toFixed(1)}%`.padEnd(10) +
+      deltaStr
     );
   });
 
@@ -323,7 +367,7 @@ export async function runMmrShow(playerArg: string, options: { threshold?: numbe
 
   const mmrCsvPath = path.resolve(process.cwd(), '.tmp/mmr.csv');
   if (!fs.existsSync(mmrCsvPath)) {
-    throw new Error(`MMR CSV not found at ${mmrCsvPath}. Please run 'mmr calculate' first.`);
+    throw new Error(`MMR CSV not found at ${mmrCsvPath}. Please run 'calculate' first.`);
   }
 
   const fileContent = fs.readFileSync(mmrCsvPath, 'utf8');
@@ -333,12 +377,14 @@ export async function runMmrShow(playerArg: string, options: { threshold?: numbe
     trim: true,
   });
 
-  const players: PlayerStats[] = records.map((r: any) => ({
+  const players: CsvPlayerStats[] = records.map((r: any) => ({
     player: r.player,
     mmr: parseFloat(r.mmr),
+    rank: parseInt(r.rank, 10),
     games: parseInt(r.games, 10),
     wins: parseInt(r.wins, 10),
     losses: parseInt(r.losses, 10),
+    delta: parseFloat(r.delta) || 0.0,
   }));
 
   const targetLower = playerArg.trim().toLowerCase();
@@ -361,6 +407,7 @@ export async function runMmrShow(playerArg: string, options: { threshold?: numbe
   }
 
   const winRate = stats.games > 0 ? (stats.wins / stats.games) * 100 : 0;
+  const deltaStr = (stats.delta >= 0 ? '+' : '') + stats.delta.toFixed(2);
 
   console.log(`\n=== Player Profile: ${stats.player} ===`);
   console.log(`  MMR:          ${stats.mmr.toFixed(2)}`);
@@ -369,4 +416,5 @@ export async function runMmrShow(playerArg: string, options: { threshold?: numbe
   console.log(`  Wins:         ${stats.wins}`);
   console.log(`  Losses:       ${stats.losses}`);
   console.log(`  Win Rate:     ${winRate.toFixed(1)}%`);
+  console.log(`  Delta:        ${deltaStr}`);
 }
