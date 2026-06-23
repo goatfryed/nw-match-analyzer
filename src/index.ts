@@ -2,7 +2,6 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { Command } from 'commander';
 import { downloadSourceSheet } from './commands/download.js';
-import { runFriendzoneAnalysis } from './commands/friendzone/root.js';
 import { runFriendzoneList } from './commands/friendzone/list.js';
 import { runFriendzoneShow } from './commands/friendzone/show.js';
 import { runFriendzoneCliques } from './commands/friendzone/cliques.js';
@@ -46,18 +45,6 @@ program
 const friendzone = program
   .command('friendzone')
   .description('Friendzone analysis commands');
-
-friendzone
-  .command('generate', { isDefault: true })
-  .description('Generate friendzone CSV matrix')
-  .action(async () => {
-    try {
-      await runFriendzoneAnalysis();
-    } catch (error) {
-      console.error('Error running friendzone analysis:', error);
-      process.exit(1);
-    }
-  });
 
 friendzone
   .command('list [player]')
@@ -121,13 +108,9 @@ friendzone
     }
   });
 
-const mmr = program
-  .command('mmr')
-  .description('MMR analysis commands');
-
-mmr
+program
   .command('calculate')
-  .description('Calculate MMR ratings from source CSV and save to .tmp/mmr.csv')
+  .description('Calculate both MMR ratings and friendship insights from source CSV')
   .option('-d, --default-rating <number>', 'default rating', (val) => parseFloat(val))
   .option('-k, --k-factor <number>', 'K-factor constant', (val) => parseFloat(val))
   .option('--generations <number>', 'number of generations', (val) => parseInt(val, 10))
@@ -136,10 +119,14 @@ mmr
     try {
       await calculateSourceMmr(options);
     } catch (error) {
-      console.error('Error running MMR calculation:', error);
+      console.error('Error running calculation:', error);
       process.exit(1);
     }
   });
+
+const mmr = program
+  .command('mmr')
+  .description('MMR analysis commands');
 
 mmr
   .command('list')

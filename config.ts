@@ -2,7 +2,6 @@ export default {
     "spreadsheetId": "1lJrTw9okwrOi9CyzLr_M3ecYi8cDcG4m-4Gtx-NsgCQ",
     "sourceSheetId": 1902818640,
     "friendzone": {
-        "sheetId": 1266621810,
         "matchThreshold": 5,
         "amount": 10,
         "cliqueThreshold": 0.75,
@@ -12,9 +11,11 @@ export default {
     },
     "mmr": {
         "defaultRating": 1500,
-        "kFactor": 40,
+        "kFactor": 32,
         "matchThreshold": 5,
         "amount": 20,
-        "sort": "descending"
+        "sort": "descending",
+        "cohesionScaling": 75,
+        "cohesionDampingGames": 5
     }
 }

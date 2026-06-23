@@ -2,40 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import config from '../../config.js';
-
-interface PlayerStats {
-  player: string;
-  mmr: number;
-  games: number;
-  wins: number;
-  losses: number;
-  calibrationGames: number;
-}
-
-interface CsvRecord {
-  game: string;
-  date: string;
-  side: string;
-  win: string;
-  player: string;
-  [key: string]: string;
-}
-
-function parseDate(dateStr: string): Date {
-  const match = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{1,2})$/);
-  if (match) {
-    const [_, day, month, year, hour, minute] = match;
-    return new Date(
-      parseInt(year, 10),
-      parseInt(month, 10) - 1,
-      parseInt(day, 10),
-      parseInt(hour, 10),
-      parseInt(minute, 10)
-    );
-  }
-  const fallback = Date.parse(dateStr);
-  return isNaN(fallback) ? new Date(0) : new Date(fallback);
-}
+import { calculateMmrAndFriendship, PlayerStats, CsvRecord } from '../calculate/mmr.js';
 
 function arrayToCsv(rows: string[][]): string {
   return rows
@@ -58,6 +25,9 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
   const generations = options.generations ?? 1;
   const calibration = options.calibration ?? 10;
 
+  const cohesionScaling = (config as any).mmr?.cohesionScaling ?? 100;
+  const cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
+
   const sourceCsvPath = path.resolve(process.cwd(), '.tmp/source.csv');
   if (!fs.existsSync(sourceCsvPath)) {
     throw new Error(`Source CSV not found at ${sourceCsvPath}. Please run 'download' command first.`);
@@ -77,163 +47,25 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
     throw new Error('CSV file is empty.');
   }
 
-  // Group records by game / match
-  const games = new Map<string, CsvRecord[]>();
-  for (const record of records) {
-    const game = record.game;
-    const date = record.date;
-    const player = record.player;
-    const side = record.side;
+  console.log('Orchestrating ratings calculation simulation (including moving cohesion)...');
+  const { players, friendships } = calculateMmrAndFriendship(records, {
+    defaultRating,
+    kFactor,
+    generations,
+    calibration,
+    cohesionScaling,
+    cohesionDampingGames,
+  });
 
-    if (!game || !player || !side) continue;
-
-    const matchKey = date ? `${game}_${date}` : game;
-    if (!games.has(matchKey)) {
-      games.set(matchKey, []);
-    }
-    games.get(matchKey)!.push(record);
+  const tmpDir = path.resolve(process.cwd(), '.tmp');
+  if (!fs.existsSync(tmpDir)) {
+    fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  console.log(`Grouping matches and sorting chronologically...`);
-  // Sort matches chronologically
-  const sortedMatches = Array.from(games.entries())
-    .map(([matchKey, participants]) => {
-      const dateStr = participants[0]?.date || '';
-      const dateObj = dateStr ? parseDate(dateStr) : new Date(0);
-      return { matchKey, participants, date: dateObj };
-    })
-    .sort((a, b) => a.date.getTime() - b.date.getTime());
-
-  console.log(`Processing ${sortedMatches.length} matches over ${generations} generation(s) with calibration threshold of ${calibration} game(s)...`);
-
-  const playerStatsMap = new Map<string, PlayerStats>();
-
-  function getOrCreatePlayer(name: string): PlayerStats {
-    let stats = playerStatsMap.get(name);
-    if (!stats) {
-      stats = { player: name, mmr: defaultRating, games: 0, wins: 0, losses: 0, calibrationGames: 0 };
-      playerStatsMap.set(name, stats);
-    }
-    return stats;
-  }
-
-  for (let gen = 1; gen <= generations; gen++) {
-    // Reset stats for all players before each generation, keeping their MMR and calibrationGames
-    for (const stats of playerStatsMap.values()) {
-      stats.games = 0;
-      stats.wins = 0;
-      stats.losses = 0;
-    }
-
-    for (const match of sortedMatches) {
-      const participants = match.participants;
-
-      // Check who won using the `win` column
-      let blueWon = false;
-      let redWon = false;
-
-      for (const p of participants) {
-        const isWin = p.win?.toUpperCase() === 'TRUE';
-        if (isWin) {
-          if (p.side === 'blue') blueWon = true;
-          if (p.side === 'red') redWon = true;
-        }
-      }
-
-      const blueOutcome = blueWon ? 1 : 0;
-      const redOutcome = redWon ? 1 : 0;
-
-      // Separate players by team using player column
-      const bluePlayers = participants
-        .filter((p) => p.side === 'blue')
-        .map((p) => p.player);
-      const redPlayers = participants
-        .filter((p) => p.side === 'red')
-        .map((p) => p.player);
-
-      if (bluePlayers.length === 0 || redPlayers.length === 0) {
-        // Cannot calculate average MMR for a team with 0 players
-        continue;
-      }
-
-      // Gather trust factor weights and stats for Blue
-      const blueWeights: number[] = [];
-      const blueStats: PlayerStats[] = [];
-      for (const name of bluePlayers) {
-        const stats = getOrCreatePlayer(name);
-        const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
-        blueWeights.push(w);
-        blueStats.push(stats);
-      }
-
-      let blueWeightedMmrSum = 0;
-      let blueWeightSum = 0;
-      for (let i = 0; i < bluePlayers.length; i++) {
-        const w = blueWeights[i];
-        blueWeightedMmrSum += w * blueStats[i].mmr;
-        blueWeightSum += w;
-      }
-      const blueAvg = blueWeightedMmrSum / blueWeightSum;
-
-      // Gather trust factor weights and stats for Red
-      const redWeights: number[] = [];
-      const redStats: PlayerStats[] = [];
-      for (const name of redPlayers) {
-        const stats = getOrCreatePlayer(name);
-        const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
-        redWeights.push(w);
-        redStats.push(stats);
-      }
-
-      let redWeightedMmrSum = 0;
-      let redWeightSum = 0;
-      for (let i = 0; i < redPlayers.length; i++) {
-        const w = redWeights[i];
-        redWeightedMmrSum += w * redStats[i].mmr;
-        redWeightSum += w;
-      }
-      const redAvg = redWeightedMmrSum / redWeightSum;
-
-      // Expected outcomes
-      const expectedBlue = 1 / (1 + Math.pow(10, (redAvg - blueAvg) / 400));
-      const expectedRed = 1 - expectedBlue;
-
-      // Update Blue team stats and ratings
-      for (let i = 0; i < bluePlayers.length; i++) {
-        const stats = blueStats[i];
-        const w = blueWeights[i];
-        const personalK = kFactor * (2.0 - w);
-        stats.mmr += personalK * (blueOutcome - expectedBlue);
-        stats.games += 1;
-        stats.calibrationGames += 1;
-        if (blueWon) {
-          stats.wins += 1;
-        } else {
-          stats.losses += 1;
-        }
-      }
-
-      // Update Red team stats and ratings
-      for (let i = 0; i < redPlayers.length; i++) {
-        const stats = redStats[i];
-        const w = redWeights[i];
-        const personalK = kFactor * (2.0 - w);
-        stats.mmr += personalK * (redOutcome - expectedRed);
-        stats.games += 1;
-        stats.calibrationGames += 1;
-        if (redWon) {
-          stats.wins += 1;
-        } else {
-          stats.losses += 1;
-        }
-      }
-    }
-  }
-
-  // Save to .tmp/mmr.csv
-  const csvRows: string[][] = [['player', 'mmr', 'games', 'wins', 'losses']];
-  for (const stats of playerStatsMap.values()) {
-    csvRows.push([
+  // 1. Save ratings to .tmp/mmr.csv
+  const mmrCsvRows: string[][] = [['player', 'mmr', 'games', 'wins', 'losses']];
+  for (const stats of players) {
+    mmrCsvRows.push([
       stats.player,
       stats.mmr.toFixed(2),
       String(stats.games),
@@ -241,28 +73,48 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
       String(stats.losses),
     ]);
   }
+  const mmrOutputPath = path.join(tmpDir, 'mmr.csv');
+  console.log(`Writing MMR data to ${mmrOutputPath}...`);
+  fs.writeFileSync(mmrOutputPath, arrayToCsv(mmrCsvRows), 'utf8');
 
-  const tmpDir = path.resolve(process.cwd(), '.tmp');
-  if (!fs.existsSync(tmpDir)) {
-    fs.mkdirSync(tmpDir, { recursive: true });
+  // 2. Save friendships to .tmp/friendzone.csv
+  const friendzoneCsvRows: string[][] = [
+    ['player', 'other', 'same game', 'same side', 'friendship index']
+  ];
+  for (const pair of friendships) {
+    friendzoneCsvRows.push([
+      pair.player,
+      pair.other,
+      String(pair.sameGame),
+      String(pair.sameSide),
+      pair.friendshipIndex.toFixed(4),
+    ]);
   }
-  const outputPath = path.join(tmpDir, 'mmr.csv');
+  const friendzoneOutputPath = path.join(tmpDir, 'friendzone.csv');
+  console.log(`Writing Friendzone data to ${friendzoneOutputPath}...`);
+  fs.writeFileSync(friendzoneOutputPath, arrayToCsv(friendzoneCsvRows), 'utf8');
 
-  console.log(`Writing MMR data to ${outputPath}...`);
-  fs.writeFileSync(outputPath, arrayToCsv(csvRows), 'utf8');
-
-  // Save metadata JSON
+  // 3. Save metadata JSON
   const metaPath = path.join(tmpDir, 'mmr_meta.json');
+  const gamesSet = new Set<string>();
+  for (const record of records) {
+    if (record.game && record.player && record.side) {
+      gamesSet.add(record.date ? `${record.game}_${record.date}` : record.game);
+    }
+  }
+
   const metadata = {
-    totalGames: sortedMatches.length,
+    totalGames: gamesSet.size,
     generations,
     calibration,
     defaultRating,
-    kFactor
+    kFactor,
+    cohesionScaling,
+    cohesionDampingGames
   };
   fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
 
-  console.log('✅ MMR calculation complete.');
+  console.log('✅ MMR and Friendzone calculations complete.');
 }
 
 export async function runMmrList(options: { threshold?: number; lines?: number; skip?: number; sort?: string; tail?: boolean }): Promise<void> {
