@@ -26,6 +26,6 @@ export default {
          * +120: 66.6% wr
          */
         "cohesionScaling": 75,
-        "cohesionDampingGames": 5
+        "cohesionDampingGames": 10
     }
 }

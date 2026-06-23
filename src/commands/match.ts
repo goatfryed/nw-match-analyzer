@@ -229,6 +229,23 @@ export async function runMatchShow(matchRef: string): Promise<void> {
     // Ignore if friendzone.csv doesn't exist yet
   }
 
+  // Load player games count from mmr.csv
+  const mmrCsvPath = path.resolve(process.cwd(), '.tmp/mmr.csv');
+  const playerGamesMap = new Map<string, number>();
+  if (fs.existsSync(mmrCsvPath)) {
+    try {
+      const mmrContent = fs.readFileSync(mmrCsvPath, 'utf8');
+      const mmrRecords = parse(mmrContent, { columns: true, skip_empty_lines: true, trim: true });
+      for (const r of mmrRecords) {
+        if (r.player) {
+          playerGamesMap.set(r.player.toLowerCase(), parseInt(r.games, 10) || 0);
+        }
+      }
+    } catch (e) {
+      // Ignore
+    }
+  }
+
   const dampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
 
   console.log(`\n=== Match Details: ${targetMatch.gameId} ===`);
@@ -248,11 +265,13 @@ export async function runMatchShow(matchRef: string): Promise<void> {
   console.log('');
 
   if (blueRoster.length > 0 || redRoster.length > 0) {
-    console.log('  Roster & Top 4 Friendship Average:');
-    const blueHeader = `Blue Team (${blueRoster.length} players)`.padEnd(42);
-    const redHeader = `Red Team (${redRoster.length} players)`;
-    console.log(`  ${blueHeader}| ${redHeader}`);
-    console.log('  ' + '-'.repeat(42) + '+' + '-'.repeat(42));
+    console.log('  Roster:');
+
+    const maxNameLen = Math.max(
+      ...blueRoster.map((p) => p.length),
+      ...redRoster.map((p) => p.length),
+      0
+    );
 
     const maxLen = Math.max(blueRoster.length, redRoster.length);
     for (let i = 0; i < maxLen; i++) {
@@ -262,16 +281,21 @@ export async function runMatchShow(matchRef: string): Promise<void> {
       let blueText = '';
       if (bluePlayer) {
         const blueAvg = tracker.getPlayerCohesion(bluePlayer, blueRoster, dampingGames);
-        blueText = `${bluePlayer} (Avg: ${blueAvg.toFixed(4)})`;
+        const blueGames = playerGamesMap.get(bluePlayer.toLowerCase()) || 0;
+        const blueGamesStr = String(blueGames).padStart(2, '0');
+        blueText = `${bluePlayer.padStart(maxNameLen)} (${blueAvg.toFixed(4)}🫂  / ${blueGamesStr}⚔️  )`;
       }
 
       let redText = '';
       if (redPlayer) {
         const redAvg = tracker.getPlayerCohesion(redPlayer, redRoster, dampingGames);
-        redText = `${redPlayer} (Avg: ${redAvg.toFixed(4)})`;
+        const redGames = playerGamesMap.get(redPlayer.toLowerCase()) || 0;
+        const redGamesStr = String(redGames).padStart(2, '0');
+        redText = `${redPlayer.padStart(maxNameLen)} (${redAvg.toFixed(4)}🫂  / ${redGamesStr}⚔️  )`;
       }
 
-      console.log(`  ${blueText.padEnd(42)}| ${redText}`);
+      const leftPart = blueText ? blueText : ''.padStart(maxNameLen + 21);
+      console.log(`  ${leftPart}  |  ${redText}`);
     }
     console.log('');
   }
