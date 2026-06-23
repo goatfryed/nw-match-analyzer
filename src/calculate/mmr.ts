@@ -26,6 +26,20 @@ export interface MmrOptions {
   calibration: number;
   cohesionScaling: number;
   cohesionDampingGames: number;
+  rebuild?: boolean;
+  fromMatchRef?: string;
+  toMatchRef?: string;
+  previousPlayers?: Map<string, { mmr: number; games: number; wins: number; losses: number }>;
+  previousFriendshipsSameGame?: Map<string, number>;
+  previousFriendshipsSameSide?: Map<string, number>;
+  previousMatchHead?: string;
+}
+
+interface SortedMatch {
+  matchKey: string;
+  participants: CsvRecord[];
+  date: Date;
+  gameId: string;
 }
 
 function parseDate(dateStr: string): Date {
@@ -44,11 +58,74 @@ function parseDate(dateStr: string): Date {
   return isNaN(fallback) ? new Date(0) : new Date(fallback);
 }
 
+function resolveIndex(
+  ref: string | undefined,
+  sortedMatches: SortedMatch[],
+  matchHeadIndex: number,
+  defaultIndex: number
+): number {
+  if (!ref) return defaultIndex;
+
+  const trimmed = ref.trim();
+  const regexMatch = trimmed.match(/^(start|head|end|.*?)(?:([+-])(\d{1,3}))?$/);
+  if (!regexMatch) {
+    throw new Error(`Invalid game ID reference format: "${ref}"`);
+  }
+
+  const base = regexMatch[1];
+  const sign = regexMatch[2];
+  const offsetStr = regexMatch[3];
+
+  let baseIndex = -1;
+  if (base === 'start') {
+    baseIndex = 0;
+  } else if (base === 'head') {
+    baseIndex = matchHeadIndex;
+  } else if (base === 'end') {
+    baseIndex = sortedMatches.length - 1;
+  } else {
+    baseIndex = sortedMatches.findIndex((m) => m.gameId === base);
+    if (baseIndex === -1) {
+      throw new Error(`Game ID "${base}" not found in matches dataset`);
+    }
+  }
+
+  let finalIndex = baseIndex;
+  if (sign && offsetStr) {
+    const offset = parseInt(offsetStr, 10);
+    if (sign === '+') {
+      finalIndex = baseIndex + offset;
+    } else {
+      finalIndex = baseIndex - offset;
+    }
+  }
+
+  // Clamp index to valid match range
+  if (finalIndex < 0) finalIndex = 0;
+  if (finalIndex >= sortedMatches.length) finalIndex = sortedMatches.length - 1;
+
+  return finalIndex;
+}
+
 export function calculateMmrAndFriendship(
   records: CsvRecord[],
   options: MmrOptions
-): { players: PlayerStats[]; friendships: PairRecord[] } {
-  const { defaultRating, kFactor, generations, calibration, cohesionScaling, cohesionDampingGames } = options;
+): { players: PlayerStats[]; friendships: PairRecord[]; matchHead: string } {
+  const {
+    defaultRating,
+    kFactor,
+    generations,
+    calibration,
+    cohesionScaling,
+    cohesionDampingGames,
+    rebuild = false,
+    fromMatchRef,
+    toMatchRef,
+    previousPlayers = new Map(),
+    previousFriendshipsSameGame = new Map(),
+    previousFriendshipsSameSide = new Map(),
+    previousMatchHead,
+  } = options;
 
   // Group records by game / match
   const games = new Map<string, CsvRecord[]>();
@@ -68,16 +145,45 @@ export function calculateMmrAndFriendship(
   }
 
   // Sort matches chronologically
-  const sortedMatches = Array.from(games.entries())
+  const sortedMatches: SortedMatch[] = Array.from(games.entries())
     .map(([matchKey, participants]) => {
       const dateStr = participants[0]?.date || '';
       const dateObj = dateStr ? parseDate(dateStr) : new Date(0);
-      return { matchKey, participants, date: dateObj };
+      const gameId = participants[0]?.game || '';
+      return { matchKey, participants, date: dateObj, gameId };
     })
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
+  // Find index of previous matchHead
+  const matchHeadIndex = previousMatchHead
+    ? sortedMatches.findIndex((m) => m.gameId === previousMatchHead)
+    : -1;
+
+  // Resolve boundary indices
+  const defaultFromIndex = (rebuild || matchHeadIndex === -1) ? 0 : matchHeadIndex + 1;
+  const defaultToIndex = sortedMatches.length - 1;
+
+  const fromIndex = resolveIndex(fromMatchRef, sortedMatches, matchHeadIndex, defaultFromIndex);
+  const toIndex = resolveIndex(toMatchRef, sortedMatches, matchHeadIndex, defaultToIndex);
+
+  const matchesToProcess = sortedMatches.slice(fromIndex, toIndex + 1);
+
   const playerStatsMap = new Map<string, PlayerStats>();
   const tracker = new CohesionTracker();
+
+  // Populate map with previous players to preserve their Elo rating history
+  if (!rebuild) {
+    for (const [name, prev] of previousPlayers.entries()) {
+      playerStatsMap.set(name, {
+        player: name,
+        mmr: prev.mmr,
+        games: prev.games,
+        wins: prev.wins,
+        losses: prev.losses,
+        calibrationGames: Math.min(prev.games, calibration),
+      });
+    }
+  }
 
   function getOrCreatePlayer(name: string): PlayerStats {
     let stats = playerStatsMap.get(name);
@@ -89,18 +195,33 @@ export function calculateMmrAndFriendship(
   }
 
   for (let gen = 1; gen <= generations; gen++) {
-    // Reset stats for all players before each generation, keeping their MMR and calibrationGames
-    for (const stats of playerStatsMap.values()) {
-      stats.games = 0;
-      stats.wins = 0;
-      stats.losses = 0;
+    // Reset stats for all players before each generation to their baseline previous state
+    for (const [name, stats] of playerStatsMap.entries()) {
+      const prev = previousPlayers.get(name);
+      if (!rebuild && prev) {
+        stats.games = prev.games;
+        stats.wins = prev.wins;
+        stats.losses = prev.losses;
+      } else {
+        stats.games = 0;
+        stats.wins = 0;
+        stats.losses = 0;
+      }
     }
 
-    // Reset friendship history mapping at start of generation to maintain chronological moving state
+    // Reset friendship history tracker to the baseline previous state
     tracker.sameGame.clear();
     tracker.sameSide.clear();
+    if (!rebuild) {
+      for (const [k, v] of previousFriendshipsSameGame.entries()) {
+        tracker.sameGame.set(k, v);
+      }
+      for (const [k, v] of previousFriendshipsSameSide.entries()) {
+        tracker.sameSide.set(k, v);
+      }
+    }
 
-    for (const match of sortedMatches) {
+    for (const match of matchesToProcess) {
       const participants = match.participants;
 
       // Determine match outcomes
@@ -128,7 +249,7 @@ export function calculateMmrAndFriendship(
         continue;
       }
 
-      // 1. Gather baseline MMR stats and calculate trust weights for Blue
+      // Gather baseline MMR stats and calculate trust weights for Blue
       const blueWeights: number[] = [];
       const blueStats: PlayerStats[] = [];
       for (const name of bluePlayers) {
@@ -148,7 +269,7 @@ export function calculateMmrAndFriendship(
         redStats.push(stats);
       }
 
-      // 2. Compute trust-weighted average MMR
+      // Compute trust-weighted average MMR
       const sumBlueWeights = blueWeights.reduce((sum, w) => sum + w, 0);
       const sumRedWeights = redWeights.reduce((sum, w) => sum + w, 0);
 
@@ -159,18 +280,18 @@ export function calculateMmrAndFriendship(
         ? redStats.reduce((sum, s, idx) => sum + s.mmr * redWeights[idx], 0) / sumRedWeights
         : defaultRating;
 
-      // 3. Compute team cohesion Elo bonus (using current moving friendship ratings)
+      // Compute team cohesion Elo bonus (using current moving friendship ratings)
       const blueCohesionBonus = tracker.getTeamCohesionBonus(bluePlayers, cohesionDampingGames, cohesionScaling);
       const redCohesionBonus = tracker.getTeamCohesionBonus(redPlayers, cohesionDampingGames, cohesionScaling);
 
       const blueEffective = blueAvg + blueCohesionBonus;
       const redEffective = redAvg + redCohesionBonus;
 
-      // 4. Calculate expected win probabilities
+      // Calculate expected win probabilities
       const expectedBlue = 1 / (1 + Math.pow(10, (redEffective - blueEffective) / 400));
       const expectedRed = 1 / (1 + Math.pow(10, (blueEffective - redEffective) / 400));
 
-      // 5. Update Elo ratings and games stats for players
+      // Update Elo ratings and games stats for players
       for (const stats of blueStats) {
         const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
         const k = kFactor * (2.0 - w);
@@ -195,7 +316,7 @@ export function calculateMmrAndFriendship(
         }
       }
 
-      // 6. Record match in cohesion tracker to update relationship data chronologically
+      // Record match in cohesion tracker to update relationship data chronologically
       tracker.recordMatch(bluePlayers, redPlayers);
     }
   }
@@ -203,5 +324,8 @@ export function calculateMmrAndFriendship(
   const players = Array.from(playerStatsMap.values());
   const friendships = generateFriendzoneRecords(tracker);
 
-  return { players, friendships };
+  const lastProcessed = matchesToProcess[matchesToProcess.length - 1];
+  const matchHead = lastProcessed ? lastProcessed.gameId : (previousMatchHead || '');
+
+  return { players, friendships, matchHead };
 }

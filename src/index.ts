@@ -115,6 +115,9 @@ program
   .option('-k, --k-factor <number>', 'K-factor constant', (val) => parseFloat(val))
   .option('--generations <number>', 'number of generations', (val) => parseInt(val, 10))
   .option('--calibration <number>', 'number of games for full calibration', (val) => parseInt(val, 10))
+  .option('--rebuild', 'rebuild ratings and friendships from scratch')
+  .option('--from <string>', 'start game ID reference (e.g. start, head, gameId, gameId+N)')
+  .option('--to <string>', 'end game ID reference (e.g. gameId-N)')
   .action(async (options) => {
     try {
       await calculateSourceMmr(options);

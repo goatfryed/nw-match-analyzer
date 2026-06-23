@@ -19,7 +19,15 @@ function arrayToCsv(rows: string[][]): string {
     .join('\n');
 }
 
-export async function calculateSourceMmr(options: { defaultRating?: number; kFactor?: number; generations?: number; calibration?: number }): Promise<void> {
+export async function calculateSourceMmr(options: {
+  defaultRating?: number;
+  kFactor?: number;
+  generations?: number;
+  calibration?: number;
+  rebuild?: boolean;
+  from?: string;
+  to?: string;
+}): Promise<void> {
   const defaultRating = options.defaultRating ?? (config as any).mmr?.defaultRating ?? 1500;
   const kFactor = options.kFactor ?? (config as any).mmr?.kFactor ?? 32;
   const generations = options.generations ?? 1;
@@ -47,14 +55,83 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
     throw new Error('CSV file is empty.');
   }
 
+  // Load previous state if rebuild option is not set
+  const rebuild = !!options.rebuild;
+  const previousPlayers = new Map<string, { mmr: number; games: number; wins: number; losses: number }>();
+  const mmrCsvPath = path.resolve(process.cwd(), '.tmp/mmr.csv');
+
+  if (!rebuild && fs.existsSync(mmrCsvPath)) {
+    try {
+      console.log('Loading previous MMR ratings...');
+      const mmrContent = fs.readFileSync(mmrCsvPath, 'utf8');
+      const mmrRecords = parse(mmrContent, { columns: true, skip_empty_lines: true, trim: true });
+      for (const r of mmrRecords) {
+        if (r.player) {
+          previousPlayers.set(r.player, {
+            mmr: parseFloat(r.mmr) || defaultRating,
+            games: parseInt(r.games, 10) || 0,
+            wins: parseInt(r.wins, 10) || 0,
+            losses: parseInt(r.losses, 10) || 0,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('Could not parse previous mmr.csv, starting fresh.');
+    }
+  }
+
+  const previousFriendshipsSameGame = new Map<string, number>();
+  const previousFriendshipsSameSide = new Map<string, number>();
+  const previousFriendshipsIndex = new Map<string, number>();
+  const friendzoneCsvPath = path.resolve(process.cwd(), '.tmp/friendzone.csv');
+
+  if (!rebuild && fs.existsSync(friendzoneCsvPath)) {
+    try {
+      console.log('Loading previous Friendzone relationship stats...');
+      const fzContent = fs.readFileSync(friendzoneCsvPath, 'utf8');
+      const fzRecords = parse(fzContent, { columns: true, skip_empty_lines: true, trim: true });
+      for (const r of fzRecords) {
+        if (r.player && r.other) {
+          const p1 = r.player;
+          const p2 = r.other;
+          const key = p1 < p2 ? `${p1}:${p2}` : `${p2}:${p1}`;
+          previousFriendshipsSameGame.set(key, parseInt(r['same game'], 10) || 0);
+          previousFriendshipsSameSide.set(key, parseInt(r['same side'], 10) || 0);
+          previousFriendshipsIndex.set(key, parseFloat(r['friendship index']) || 0.0);
+        }
+      }
+    } catch (e) {
+      console.warn('Could not parse previous friendzone.csv, starting fresh.');
+    }
+  }
+
+  let previousMatchHead: string | undefined;
+  const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
+  if (!rebuild && fs.existsSync(metaPath)) {
+    try {
+      const metaContent = fs.readFileSync(metaPath, 'utf8');
+      const meta = JSON.parse(metaContent);
+      previousMatchHead = meta.matchHead;
+    } catch (e) {
+      // Ignore
+    }
+  }
+
   console.log('Orchestrating ratings calculation simulation (including moving cohesion)...');
-  const { players, friendships } = calculateMmrAndFriendship(records, {
+  const { players, friendships, matchHead } = calculateMmrAndFriendship(records, {
     defaultRating,
     kFactor,
     generations,
     calibration,
     cohesionScaling,
     cohesionDampingGames,
+    rebuild,
+    fromMatchRef: options.from,
+    toMatchRef: options.to,
+    previousPlayers,
+    previousFriendshipsSameGame,
+    previousFriendshipsSameSide,
+    previousMatchHead,
   });
 
   const tmpDir = path.resolve(process.cwd(), '.tmp');
@@ -62,32 +139,44 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
     fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  // 1. Save ratings to .tmp/mmr.csv
-  const mmrCsvRows: string[][] = [['player', 'mmr', 'games', 'wins', 'losses']];
+  // 1. Save ratings to .tmp/mmr.csv with delta values
+  const mmrCsvRows: string[][] = [['player', 'mmr', 'games', 'wins', 'losses', 'delta']];
   for (const stats of players) {
+    const prev = previousPlayers.get(stats.player);
+    const prevMmr = prev ? prev.mmr : defaultRating;
+    const deltaVal = stats.mmr - prevMmr;
+    const deltaStr = (deltaVal >= 0 ? '+' : '') + deltaVal.toFixed(2);
+
     mmrCsvRows.push([
       stats.player,
       stats.mmr.toFixed(2),
       String(stats.games),
       String(stats.wins),
       String(stats.losses),
+      deltaStr,
     ]);
   }
   const mmrOutputPath = path.join(tmpDir, 'mmr.csv');
   console.log(`Writing MMR data to ${mmrOutputPath}...`);
   fs.writeFileSync(mmrOutputPath, arrayToCsv(mmrCsvRows), 'utf8');
 
-  // 2. Save friendships to .tmp/friendzone.csv
+  // 2. Save friendships to .tmp/friendzone.csv with delta values
   const friendzoneCsvRows: string[][] = [
-    ['player', 'other', 'same game', 'same side', 'friendship index']
+    ['player', 'other', 'same game', 'same side', 'friendship index', 'delta']
   ];
   for (const pair of friendships) {
+    const key = pair.player < pair.other ? `${pair.player}:${pair.other}` : `${pair.other}:${pair.player}`;
+    const prevIndex = previousFriendshipsIndex.get(key) ?? 0.0;
+    const deltaVal = pair.friendshipIndex - prevIndex;
+    const deltaStr = (deltaVal >= 0 ? '+' : '') + deltaVal.toFixed(4);
+
     friendzoneCsvRows.push([
       pair.player,
       pair.other,
       String(pair.sameGame),
       String(pair.sameSide),
       pair.friendshipIndex.toFixed(4),
+      deltaStr,
     ]);
   }
   const friendzoneOutputPath = path.join(tmpDir, 'friendzone.csv');
@@ -95,7 +184,6 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
   fs.writeFileSync(friendzoneOutputPath, arrayToCsv(friendzoneCsvRows), 'utf8');
 
   // 3. Save metadata JSON
-  const metaPath = path.join(tmpDir, 'mmr_meta.json');
   const gamesSet = new Set<string>();
   for (const record of records) {
     if (record.game && record.player && record.side) {
@@ -110,7 +198,8 @@ export async function calculateSourceMmr(options: { defaultRating?: number; kFac
     defaultRating,
     kFactor,
     cohesionScaling,
-    cohesionDampingGames
+    cohesionDampingGames,
+    matchHead
   };
   fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
 

@@ -15,6 +15,13 @@ export default {
         "matchThreshold": 5,
         "amount": 20,
         "sort": "descending",
+        /**
+         * +0: 50% wr
+         * +25: 53.6% wr
+         * +50: 57.1% wr
+         * +75: 60.7% wr
+         * +120: 66.6% wr
+         */
         "cohesionScaling": 75,
         "cohesionDampingGames": 5
     }
