@@ -105,6 +105,19 @@ export async function calculateSourceMmr(options: {
     }
   }
 
+  const matchesCsvPath = path.resolve(process.cwd(), '.tmp/matches.csv');
+  const previousMatchRecords: any[] = [];
+  if (!rebuild && fs.existsSync(matchesCsvPath)) {
+    try {
+      console.log('Loading previous match records...');
+      const matchesContent = fs.readFileSync(matchesCsvPath, 'utf8');
+      const parsedRecords = parse(matchesContent, { columns: true, skip_empty_lines: true, trim: true });
+      previousMatchRecords.push(...parsedRecords);
+    } catch (e) {
+      console.warn('Could not parse previous matches.csv, starting fresh.');
+    }
+  }
+
   let previousMatchHead: string | undefined;
   const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
   if (!rebuild && fs.existsSync(metaPath)) {
@@ -118,7 +131,7 @@ export async function calculateSourceMmr(options: {
   }
 
   console.log('Orchestrating ratings calculation simulation (including moving cohesion)...');
-  const { players, friendships, matchHead } = calculateMmrAndFriendship(records, {
+  const { players, friendships, matchHead, processedMatches, prefixGameIds } = calculateMmrAndFriendship(records, {
     defaultRating,
     kFactor,
     generations,
@@ -195,7 +208,46 @@ export async function calculateSourceMmr(options: {
   console.log(`Writing Friendzone data to ${friendzoneOutputPath}...`);
   fs.writeFileSync(friendzoneOutputPath, arrayToCsv(friendzoneCsvRows), 'utf8');
 
-  // 3. Save metadata JSON
+  // 3. Save matches to .tmp/matches.csv
+  const keptMatches = previousMatchRecords.filter((r) => prefixGameIds.has(r['game id']));
+
+  const matchesCsvRows: string[][] = [
+    ['game id', 'winner', 'mmr blue', 'avg mmr blue', 'cohesion blue', 'mmr red', 'avg mmr red', 'cohesion red']
+  ];
+
+  // Add kept matches
+  for (const r of keptMatches) {
+    matchesCsvRows.push([
+      r['game id'],
+      r['winner'],
+      r['mmr blue'],
+      r['avg mmr blue'],
+      r['cohesion blue'],
+      r['mmr red'],
+      r['avg mmr red'],
+      r['cohesion red']
+    ]);
+  }
+
+  // Add new processed matches
+  for (const m of processedMatches) {
+    matchesCsvRows.push([
+      m.gameId,
+      m.winner,
+      m.mmrBlue.toFixed(2),
+      m.avgMmrBlue.toFixed(2),
+      m.cohesionBlue.toFixed(2),
+      m.mmrRed.toFixed(2),
+      m.avgMmrRed.toFixed(2),
+      m.cohesionRed.toFixed(2)
+    ]);
+  }
+
+  const matchesOutputPath = path.join(tmpDir, 'matches.csv');
+  console.log(`Writing matches history to ${matchesOutputPath}...`);
+  fs.writeFileSync(matchesOutputPath, arrayToCsv(matchesCsvRows), 'utf8');
+
+  // 4. Save metadata JSON
   const gamesSet = new Set<string>();
   for (const record of records) {
     if (record.game && record.player && record.side) {

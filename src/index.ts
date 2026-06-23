@@ -8,6 +8,7 @@ import { runFriendzoneCliques } from './commands/friendzone/cliques.js';
 import { runFriendzoneStacks } from './commands/friendzone/stacks.js';
 import { validateSourceData } from './commands/validate.js';
 import { calculateSourceMmr, runMmrList, runMmrShow } from './commands/mmr.js';
+import { runMatchList, runMatchShow } from './commands/match.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -158,6 +159,37 @@ mmr
       await runMmrShow(player, options);
     } catch (error) {
       console.error('Error running MMR show:', error);
+      process.exit(1);
+    }
+  });
+
+const match = program
+  .command('match')
+  .description('Match logs and statistics');
+
+match
+  .command('list')
+  .description('Print list of matches')
+  .option('-n, --lines <number>', 'number of matches to print', (val) => parseInt(val, 10))
+  .option('-s, --skip <number>', 'number of matches to skip', (val) => parseInt(val, 10))
+  .option('--tail', 'display from the tail (bottom) of the match list')
+  .action(async (options) => {
+    try {
+      await runMatchList(options);
+    } catch (error) {
+      console.error('Error running match list:', error);
+      process.exit(1);
+    }
+  });
+
+match
+  .command('show <matchRef>')
+  .description('Show details of a specific match')
+  .action(async (matchRef) => {
+    try {
+      await runMatchShow(matchRef);
+    } catch (error) {
+      console.error('Error running match show:', error);
       process.exit(1);
     }
   });

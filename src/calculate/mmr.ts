@@ -107,10 +107,27 @@ function resolveIndex(
   return finalIndex;
 }
 
+export interface MatchRecord {
+  gameId: string;
+  winner: 'blue' | 'red';
+  mmrBlue: number;
+  avgMmrBlue: number;
+  cohesionBlue: number;
+  mmrRed: number;
+  avgMmrRed: number;
+  cohesionRed: number;
+}
+
 export function calculateMmrAndFriendship(
   records: CsvRecord[],
   options: MmrOptions
-): { players: PlayerStats[]; friendships: PairRecord[]; matchHead: string } {
+): {
+  players: PlayerStats[];
+  friendships: PairRecord[];
+  matchHead: string;
+  processedMatches: MatchRecord[];
+  prefixGameIds: Set<string>;
+} {
   const {
     defaultRating,
     kFactor,
@@ -193,6 +210,8 @@ export function calculateMmrAndFriendship(
     }
     return stats;
   }
+
+  const processedMatches: MatchRecord[] = [];
 
   for (let gen = 1; gen <= generations; gen++) {
     // Reset stats for all players before each generation to their baseline previous state
@@ -287,6 +306,19 @@ export function calculateMmrAndFriendship(
       const blueEffective = blueAvg + blueCohesionBonus;
       const redEffective = redAvg + redCohesionBonus;
 
+      if (gen === generations) {
+        processedMatches.push({
+          gameId: match.gameId,
+          winner: blueWon ? 'blue' : 'red',
+          mmrBlue: blueEffective,
+          avgMmrBlue: blueAvg,
+          cohesionBlue: blueCohesionBonus,
+          mmrRed: redEffective,
+          avgMmrRed: redAvg,
+          cohesionRed: redCohesionBonus,
+        });
+      }
+
       // Calculate expected win probabilities
       const expectedBlue = 1 / (1 + Math.pow(10, (redEffective - blueEffective) / 400));
       const expectedRed = 1 / (1 + Math.pow(10, (blueEffective - redEffective) / 400));
@@ -327,5 +359,10 @@ export function calculateMmrAndFriendship(
   const lastProcessed = matchesToProcess[matchesToProcess.length - 1];
   const matchHead = lastProcessed ? lastProcessed.gameId : (previousMatchHead || '');
 
-  return { players, friendships, matchHead };
+  const prefixGameIds = new Set<string>();
+  for (let i = 0; i < fromIndex; i++) {
+    prefixGameIds.add(sortedMatches[i].gameId);
+  }
+
+  return { players, friendships, matchHead, processedMatches, prefixGameIds };
 }
