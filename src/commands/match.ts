@@ -2,6 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import config from '../../config.js';
+import { CohesionTracker } from '../calculate/cohesion.js';
+import { loadPairRecords } from './friendzone/common.js';
 
 interface CsvMatchRecord {
   gameId: string;
@@ -200,8 +202,15 @@ export async function runMatchShow(matchRef: string): Promise<void> {
       const records = parse(sourceContent, { columns: true, skip_empty_lines: true, trim: true });
       const matchParticipants = records.filter((r: any) => r.game === targetMatch.gameId);
       
-      blueRoster = matchParticipants.filter((r: any) => r.side === 'blue').map((r: any) => r.player);
-      redRoster = matchParticipants.filter((r: any) => r.side === 'red').map((r: any) => r.player);
+      blueRoster = matchParticipants
+        .filter((r: any) => r.side === 'blue')
+        .map((r: any) => r.player)
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+      redRoster = matchParticipants
+        .filter((r: any) => r.side === 'red')
+        .map((r: any) => r.player)
+        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     } catch (e) {
       // Ignore
     }
@@ -212,6 +221,16 @@ export async function runMatchShow(matchRef: string): Promise<void> {
   const cohBlueStr = (targetMatch.cohesionBlue >= 0 ? '+' : '') + targetMatch.cohesionBlue.toFixed(2);
   const cohRedStr = (targetMatch.cohesionRed >= 0 ? '+' : '') + targetMatch.cohesionRed.toFixed(2);
 
+  // Load friendzone records and populate CohesionTracker for top 4 average calculation
+  const tracker = new CohesionTracker();
+  try {
+    tracker.loadFromPairs(loadPairRecords());
+  } catch (e) {
+    // Ignore if friendzone.csv doesn't exist yet
+  }
+
+  const dampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
+
   console.log(`\n=== Match Details: ${targetMatch.gameId} ===`);
   console.log(`  Date:                 ${targetMatch.date}`);
   console.log(`  Winner:               ${targetMatch.winner.toUpperCase()}`);
@@ -221,16 +240,39 @@ export async function runMatchShow(matchRef: string): Promise<void> {
   console.log(`    Effective MMR:      ${targetMatch.mmrBlue.toFixed(2)}`);
   console.log(`    Base MMR (Avg):     ${targetMatch.avgMmrBlue.toFixed(2)}`);
   console.log(`    Cohesion Elo Bonus: ${cohBlueStr}`);
-  if (blueRoster.length > 0) {
-    console.log(`    Roster:             ${blueRoster.join(', ')}`);
-  }
   console.log('');
   console.log(`  Red Team:`);
   console.log(`    Effective MMR:      ${targetMatch.mmrRed.toFixed(2)}`);
   console.log(`    Base MMR (Avg):     ${targetMatch.avgMmrRed.toFixed(2)}`);
   console.log(`    Cohesion Elo Bonus: ${cohRedStr}`);
-  if (redRoster.length > 0) {
-    console.log(`    Roster:             ${redRoster.join(', ')}`);
-  }
   console.log('');
+
+  if (blueRoster.length > 0 || redRoster.length > 0) {
+    console.log('  Roster & Top 4 Friendship Average:');
+    const blueHeader = `Blue Team (${blueRoster.length} players)`.padEnd(42);
+    const redHeader = `Red Team (${redRoster.length} players)`;
+    console.log(`  ${blueHeader}| ${redHeader}`);
+    console.log('  ' + '-'.repeat(42) + '+' + '-'.repeat(42));
+
+    const maxLen = Math.max(blueRoster.length, redRoster.length);
+    for (let i = 0; i < maxLen; i++) {
+      const bluePlayer = blueRoster[i] || '';
+      const redPlayer = redRoster[i] || '';
+
+      let blueText = '';
+      if (bluePlayer) {
+        const blueAvg = tracker.getPlayerCohesion(bluePlayer, blueRoster, dampingGames);
+        blueText = `${bluePlayer} (Avg: ${blueAvg.toFixed(4)})`;
+      }
+
+      let redText = '';
+      if (redPlayer) {
+        const redAvg = tracker.getPlayerCohesion(redPlayer, redRoster, dampingGames);
+        redText = `${redPlayer} (Avg: ${redAvg.toFixed(4)})`;
+      }
+
+      console.log(`  ${blueText.padEnd(42)}| ${redText}`);
+    }
+    console.log('');
+  }
 }

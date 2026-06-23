@@ -8,6 +8,14 @@ export class CohesionTracker {
     return p1 < p2 ? `${p1}:${p2}` : `${p2}:${p1}`;
   }
 
+  loadFromPairs(pairs: { player: string; other: string; sameGame: number; sameSide: number }[]): void {
+    for (const p of pairs) {
+      const key = this.getPairKey(p.player, p.other);
+      this.sameGame.set(key, p.sameGame);
+      this.sameSide.set(key, p.sameSide);
+    }
+  }
+
   /**
    * Record match participants to update running cohesion stats
    */
@@ -60,6 +68,27 @@ export class CohesionTracker {
   }
 
   /**
+   * Get the cohesion contribution (top 4 average friendship) for a single player within a roster
+   */
+  getPlayerCohesion(player: string, roster: string[], minGames: number): number {
+    const friendships: number[] = [];
+    for (const teammate of roster) {
+      if (teammate === player) continue;
+      friendships.push(this.getDampedFriendship(player, teammate, minGames));
+    }
+
+    if (friendships.length === 0) return 0.5;
+
+    // Sort descending to find top friends on the team
+    friendships.sort((a, b) => b - a);
+
+    // Take the top 4 friendships (representing a maximum group of 5)
+    const topFriendships = friendships.slice(0, 4);
+    const sum = topFriendships.reduce((acc, val) => acc + val, 0);
+    return sum / topFriendships.length;
+  }
+
+  /**
    * Calculate the team cohesion Elo bonus
    */
   getTeamCohesionBonus(players: string[], minGames: number, scalingFactor: number): number {
@@ -69,20 +98,7 @@ export class CohesionTracker {
 
     let totalCp = 0;
     for (const p of players) {
-      const friendships: number[] = [];
-      for (const teammate of players) {
-        if (teammate === p) continue;
-        friendships.push(this.getDampedFriendship(p, teammate, minGames));
-      }
-
-      // Sort descending to find top friends on the team
-      friendships.sort((a, b) => b - a);
-
-      // Take the top 4 friendships (representing a maximum group of 5)
-      const topFriendships = friendships.slice(0, 4);
-      const sum = topFriendships.reduce((acc, val) => acc + val, 0);
-      const cp = topFriendships.length > 0 ? sum / topFriendships.length : 0.5;
-      totalCp += cp;
+      totalCp += this.getPlayerCohesion(p, players, minGames);
     }
 
     const teamCohesion = totalCp / players.length;

@@ -41,7 +41,7 @@ export async function validateSourceData(): Promise<void> {
   console.log(`\nChecking for game IDs exceeding ${maxRowsPerGame} rows...`);
   let warningCount = 0;
   for (const [gameId, count] of gameRowCounts.entries()) {
-    if (count > maxRowsPerGame) {
+    if (count >= maxRowsPerGame) {
       console.warn(`⚠️ Warning: Game ID "${gameId}" has ${count} rows (exceeds limit of ${maxRowsPerGame})`);
       warningCount++;
     }

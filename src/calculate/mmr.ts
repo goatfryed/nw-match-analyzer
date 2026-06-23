@@ -33,6 +33,7 @@ export interface MmrOptions {
   previousFriendshipsSameGame?: Map<string, number>;
   previousFriendshipsSameSide?: Map<string, number>;
   previousMatchHead?: string;
+  maxRowsPerGame?: number;
 }
 
 interface SortedMatch {
@@ -129,6 +130,7 @@ export function calculateMmrAndFriendship(
   processedMatches: MatchRecord[];
   prefixGameIds: Set<string>;
 } {
+  const maxRowsPerGame = options.maxRowsPerGame ?? 45;
   const {
     defaultRating,
     kFactor,
@@ -184,6 +186,13 @@ export function calculateMmrAndFriendship(
   for (const [gameId, keys] of gameIdToKeys.entries()) {
     if (keys.length > 1) {
       console.warn(`⚠️ Warning: Duplicate Game ID "${gameId}" found across multiple matches: ${keys.join(', ')}`);
+    }
+  }
+
+  // Check for matches exceeding maxRowsPerGame
+  for (const m of sortedMatches) {
+    if (m.participants.length >= maxRowsPerGame) {
+      console.warn(`⚠️ Warning: Match "${m.matchKey}" has ${m.participants.length} participants (exceeds limit of ${maxRowsPerGame})`);
     }
   }
 

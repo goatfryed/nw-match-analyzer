@@ -35,6 +35,7 @@ export async function calculateSourceMmr(options: {
 
   const cohesionScaling = (config as any).mmr?.cohesionScaling ?? 100;
   const cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
+  const maxRowsPerGame = (config as any).validation?.maxRowsPerGame;
 
   const sourceCsvPath = path.resolve(process.cwd(), '.tmp/source.csv');
   if (!fs.existsSync(sourceCsvPath)) {
@@ -145,6 +146,7 @@ export async function calculateSourceMmr(options: {
     previousFriendshipsSameGame,
     previousFriendshipsSameSide,
     previousMatchHead,
+    maxRowsPerGame,
   });
 
   const tmpDir = path.resolve(process.cwd(), '.tmp');
