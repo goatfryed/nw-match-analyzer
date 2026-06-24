@@ -1,4 +1,4 @@
-import { CohesionTracker } from './cohesion.js';
+import { CohesionTracker, CohesionOptions } from './cohesion.js';
 import { generateFriendzoneRecords, PairRecord } from './friendzone.js';
 
 export interface PlayerStats {
@@ -19,15 +19,12 @@ export interface CsvRecord {
   [key: string]: string;
 }
 
-export interface MmrOptions {
+export interface MmrOptions extends CohesionOptions {
   defaultRating: number;
   kFactor: number;
   generations: number;
   calibration: number;
-  cohesionScaling: number;
   cohesionDampingGames: number;
-  cohesionTolerance?: number;
-  cohesionSteepness?: number;
   rebuild?: boolean;
   fromMatchRef?: string;
   toMatchRef?: string;
@@ -144,6 +141,7 @@ export interface PlayerMatchOutcome {
   teamShare: number;
   oldCohesion: number;
   newCohesion: number;
+  personalCohesionBonus: number;
 }
 
 export interface MatchResult {
@@ -173,23 +171,17 @@ export function processSingleMatch(
     defaultRating: number;
     kFactor: number;
     calibration: number;
-    cohesionScaling: number;
     cohesionDampingGames: number;
-    cohesionTolerance?: number;
-    cohesionSteepness?: number;
     scoreFactor: number;
     individualWeight: number;
-  }
+  } & CohesionOptions
 ): MatchResult | null {
   const { participants } = match;
   const {
     defaultRating,
     kFactor,
     calibration,
-    cohesionScaling,
     cohesionDampingGames,
-    cohesionTolerance = 0.12,
-    cohesionSteepness = 2.0,
     scoreFactor,
     individualWeight,
   } = options;
@@ -288,29 +280,43 @@ export function processSingleMatch(
     redStats.push(stats);
   }
 
-  const sumBlueWeights = blueWeights.reduce((sum, w) => sum + w, 0);
-  const sumRedWeights = redWeights.reduce((sum, w) => sum + w, 0);
+  const blueWeightsForAvg: number[] = [];
+  const blueStatsForAvg: PlayerStats[] = [];
+  for (let i = 0; i < bluePlayers.length; i++) {
+    if (bluePlayers[i].toLowerCase() !== 'unknown') {
+      blueWeightsForAvg.push(blueWeights[i]);
+      blueStatsForAvg.push(blueStats[i]);
+    }
+  }
 
-  const blueAvg = sumBlueWeights > 0
-    ? blueStats.reduce((sum, s, idx) => sum + s.mmr * blueWeights[idx], 0) / sumBlueWeights
+  const redWeightsForAvg: number[] = [];
+  const redStatsForAvg: PlayerStats[] = [];
+  for (let i = 0; i < redPlayers.length; i++) {
+    if (redPlayers[i].toLowerCase() !== 'unknown') {
+      redWeightsForAvg.push(redWeights[i]);
+      redStatsForAvg.push(redStats[i]);
+    }
+  }
+
+  const sumBlueWeightsForAvg = blueWeightsForAvg.reduce((sum, w) => sum + w, 0);
+  const sumRedWeightsForAvg = redWeightsForAvg.reduce((sum, w) => sum + w, 0);
+
+  const blueAvg = sumBlueWeightsForAvg > 0
+    ? blueStatsForAvg.reduce((sum, s, idx) => sum + s.mmr * blueWeightsForAvg[idx], 0) / sumBlueWeightsForAvg
     : defaultRating;
-  const redAvg = sumRedWeights > 0
-    ? redStats.reduce((sum, s, idx) => sum + s.mmr * redWeights[idx], 0) / sumRedWeights
+  const redAvg = sumRedWeightsForAvg > 0
+    ? redStatsForAvg.reduce((sum, s, idx) => sum + s.mmr * redWeightsForAvg[idx], 0) / sumRedWeightsForAvg
     : defaultRating;
 
   const blueCohesionBonus = tracker.getTeamCohesionBonus(
     bluePlayers,
     cohesionDampingGames,
-    cohesionScaling,
-    cohesionTolerance,
-    cohesionSteepness
+    options
   );
   const redCohesionBonus = tracker.getTeamCohesionBonus(
     redPlayers,
     cohesionDampingGames,
-    cohesionScaling,
-    cohesionTolerance,
-    cohesionSteepness
+    options
   );
 
   const blueEffective = blueAvg + blueCohesionBonus;
@@ -339,7 +345,13 @@ export function processSingleMatch(
     const oldVal = oldStatsMap.get(stats.player)!;
     const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
     const k = kFactor * (2.0 - w);
-    const expectedIndiv = 1 / (1 + Math.pow(10, (redEffective - stats.mmr) / 400));
+    const playerCohesionBonus = tracker.getPlayerCohesionBonus(
+      stats.player,
+      bluePlayers,
+      cohesionDampingGames,
+      options
+    );
+    const expectedIndiv = 1 / (1 + Math.pow(10, (redEffective - (stats.mmr + playerCohesionBonus)) / 400));
     const expectedHybrid = (1 - individualWeight) * expectedBlue + individualWeight * expectedIndiv;
 
     const totalChange = k * (blueOutcome - expectedHybrid);
@@ -363,6 +375,7 @@ export function processSingleMatch(
       teamShare,
       oldCohesion: oldVal.cohesion,
       newCohesion: 0,
+      personalCohesionBonus: playerCohesionBonus,
     });
   }
 
@@ -370,7 +383,13 @@ export function processSingleMatch(
     const oldVal = oldStatsMap.get(stats.player)!;
     const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
     const k = kFactor * (2.0 - w);
-    const expectedIndiv = 1 / (1 + Math.pow(10, (blueEffective - stats.mmr) / 400));
+    const playerCohesionBonus = tracker.getPlayerCohesionBonus(
+      stats.player,
+      redPlayers,
+      cohesionDampingGames,
+      options
+    );
+    const expectedIndiv = 1 / (1 + Math.pow(10, (blueEffective - (stats.mmr + playerCohesionBonus)) / 400));
     const expectedHybrid = (1 - individualWeight) * expectedRed + individualWeight * expectedIndiv;
 
     const totalChange = k * (redOutcome - expectedHybrid);
@@ -394,6 +413,7 @@ export function processSingleMatch(
       teamShare,
       oldCohesion: oldVal.cohesion,
       newCohesion: 0,
+      personalCohesionBonus: playerCohesionBonus,
     });
   }
 
@@ -442,7 +462,9 @@ export function calculateMmrAndFriendship(
     kFactor,
     generations,
     calibration,
-    cohesionScaling,
+    cohesionPenalty,
+    cohesionBonus,
+    cohesionSoloQ,
     cohesionDampingGames,
     cohesionTolerance,
     cohesionSteepness,
@@ -577,7 +599,9 @@ export function calculateMmrAndFriendship(
           defaultRating,
           kFactor,
           calibration,
-          cohesionScaling,
+          cohesionPenalty,
+          cohesionBonus,
+          cohesionSoloQ,
           cohesionDampingGames,
           cohesionTolerance,
           cohesionSteepness,

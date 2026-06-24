@@ -35,7 +35,9 @@ export async function calculateSourceMmr(options: {
   const calibration = options.calibration ?? 10;
   const scoreFactor = options.scoreFactor ?? (config as any).mmr?.scoreFactor ?? 10;
 
-  const cohesionScaling = (config as any).mmr?.cohesionScaling ?? 100;
+  const cohesionPenalty = (config as any).mmr?.cohesionPenalty ?? 100;
+  const cohesionBonus = (config as any).mmr?.cohesionBonus ?? 100;
+  const cohesionSoloQ = (config as any).mmr?.cohesionSoloQ ?? 0.65;
   const cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
   const cohesionTolerance = (config as any).mmr?.cohesionTolerance ?? 0.12;
   const cohesionSteepness = (config as any).mmr?.cohesionSteepness ?? 2.0;
@@ -142,7 +144,9 @@ export async function calculateSourceMmr(options: {
     kFactor,
     generations,
     calibration,
-    cohesionScaling,
+    cohesionPenalty,
+    cohesionBonus,
+    cohesionSoloQ,
     cohesionDampingGames,
     cohesionTolerance,
     cohesionSteepness,
@@ -302,7 +306,9 @@ export async function calculateSourceMmr(options: {
     calibration,
     defaultRating,
     kFactor,
-    cohesionScaling,
+    cohesionPenalty,
+    cohesionBonus,
+    cohesionSoloQ,
     cohesionDampingGames,
     cohesionTolerance,
     cohesionSteepness,

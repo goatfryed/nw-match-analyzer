@@ -1,3 +1,11 @@
+export interface CohesionOptions {
+  cohesionPenalty: number;
+  cohesionBonus: number;
+  cohesionSoloQ?: number;
+  cohesionTolerance?: number;
+  cohesionSteepness?: number;
+}
+
 export class CohesionTracker {
   // Map of key "player1:player2" (alphabetically sorted) to games played together
   sameGame = new Map<string, number>();
@@ -47,11 +55,11 @@ export class CohesionTracker {
     }
   }
 
-  /**
-   * Get the damped friendship index between two players
-   */
   getDampedFriendship(p1: string, p2: string, minGames: number): number {
     if (p1 === p2) return 1.0;
+    if (p1.toLowerCase() === 'unknown' || p2.toLowerCase() === 'unknown') {
+      return 0.5;
+    }
     const key = this.getPairKey(p1, p2);
 
     const gameCount = this.sameGame.get(key) || 0;
@@ -71,9 +79,12 @@ export class CohesionTracker {
    * Get the cohesion contribution (top 4 average friendship) for a single player within a roster
    */
   getPlayerCohesion(player: string, roster: string[], minGames: number): number {
+    if (player.toLowerCase() === 'unknown') {
+      return 0.5;
+    }
     const friendships: number[] = [];
     for (const teammate of roster) {
-      if (teammate === player) continue;
+      if (teammate === player || teammate.toLowerCase() === 'unknown') continue;
       friendships.push(this.getDampedFriendship(player, teammate, minGames));
     }
 
@@ -94,33 +105,83 @@ export class CohesionTracker {
   getTeamCohesionBonus(
     players: string[],
     minGames: number,
-    scalingFactor: number,
-    u0_pos = 0.12,
-    p = 2.0
+    options: CohesionOptions
   ): number {
-    if (players.length <= 1 || scalingFactor === 0) {
+    const activePlayers = players.filter(pName => pName.toLowerCase() !== 'unknown');
+    if (activePlayers.length <= 1) {
       return 0;
     }
 
     let totalCp = 0;
-    for (const player of players) {
-      totalCp += this.getPlayerCohesion(player, players, minGames);
+    for (const player of activePlayers) {
+      totalCp += this.getPlayerCohesion(player, activePlayers, minGames);
     }
 
-    const teamCohesion = totalCp / players.length;
+    const teamCohesion = totalCp / activePlayers.length;
 
-    const B = getExpectedSoloBaseline(players.length);
+    return this.computeCohesionAdjustment(
+      teamCohesion,
+      activePlayers.length,
+      options
+    );
+  }
+
+  /**
+   * Calculate the individual player cohesion Elo bonus/penalty
+   */
+  getPlayerCohesionBonus(
+    player: string,
+    players: string[],
+    minGames: number,
+    options: CohesionOptions
+  ): number {
+    if (player.toLowerCase() === 'unknown') {
+      return 0;
+    }
+    const activePlayers = players.filter(pName => pName.toLowerCase() !== 'unknown');
+    if (activePlayers.length <= 1) {
+      return 0;
+    }
+
+    const playerCohesion = this.getPlayerCohesion(player, activePlayers, minGames);
+
+    return this.computeCohesionAdjustment(
+      playerCohesion,
+      activePlayers.length,
+      options
+    );
+  }
+
+  private computeCohesionAdjustment(
+    cohesionVal: number,
+    teamSize: number,
+    options: CohesionOptions
+  ): number {
+    const {
+      cohesionPenalty,
+      cohesionBonus,
+      cohesionSoloQ = 0.65,
+      cohesionTolerance = 0.12,
+      cohesionSteepness = 2.0,
+    } = options;
+
+    const B = getExpectedSoloBaseline(teamSize, cohesionSoloQ);
 
     let u = 0;
-    if (teamCohesion >= B) {
+    if (cohesionVal >= B) {
       const denominator = 1.0 - B;
-      u = denominator > 0 ? (teamCohesion - B) / denominator : 0;
+      u = denominator > 0 ? (cohesionVal - B) / denominator : 0;
     } else {
-      u = B > 0 ? (teamCohesion - B) / B : 0;
+      u = B > 0 ? (cohesionVal - B) / B : 0;
     }
 
-    const modifier = generalizedSCurve(u, u0_pos, p);
-    return scalingFactor * modifier;
+    const modifier = generalizedSCurve(u, cohesionTolerance, cohesionSteepness);
+
+    if (modifier >= 0) {
+      return cohesionPenalty * modifier;
+    } else {
+      return cohesionBonus * modifier;
+    }
   }
 }
 
@@ -155,15 +216,19 @@ const SOLO_BASELINE_POINTS = [
   [22, 0.65]
 ];
 
-function getExpectedSoloBaseline(teamSize: number): number {
-  if (teamSize <= 5) return 0.50;
-  if (teamSize >= 22) return 0.65;
+function getExpectedSoloBaseline(teamSize: number, cohesionSoloQ = 0.65): number {
+  const shift = cohesionSoloQ - 0.65;
+  const getShiftedVal = (val: number) => Math.max(0.0, Math.min(1.0, val + shift));
+
+  if (teamSize <= 5) return getShiftedVal(0.50);
+  if (teamSize >= 22) return getShiftedVal(0.65);
   for (let i = 0; i < SOLO_BASELINE_POINTS.length - 1; i++) {
     const [s1, v1] = SOLO_BASELINE_POINTS[i];
     const [s2, v2] = SOLO_BASELINE_POINTS[i + 1];
     if (teamSize >= s1 && teamSize <= s2) {
-      return v1 + ((teamSize - s1) / (s2 - s1)) * (v2 - v1);
+      const rawVal = v1 + ((teamSize - s1) / (s2 - s1)) * (v2 - v1);
+      return getShiftedVal(rawVal);
     }
   }
-  return 0.65;
+  return getShiftedVal(0.65);
 }

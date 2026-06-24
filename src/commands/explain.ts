@@ -21,7 +21,9 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
   let defaultRating = (config as any).mmr?.defaultRating ?? 1500;
   let kFactor = (config as any).mmr?.kFactor ?? 32;
   let calibration = (config as any).mmr?.calibration ?? 10;
-  let cohesionScaling = (config as any).mmr?.cohesionScaling ?? 100;
+  let cohesionPenalty = (config as any).mmr?.cohesionPenalty ?? 100;
+  let cohesionBonus = (config as any).mmr?.cohesionBonus ?? 100;
+  let cohesionSoloQ = (config as any).mmr?.cohesionSoloQ ?? 0.65;
   let cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
   let cohesionTolerance = (config as any).mmr?.cohesionTolerance ?? 0.12;
   let cohesionSteepness = (config as any).mmr?.cohesionSteepness ?? 2.0;
@@ -36,7 +38,9 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
       if (meta.defaultRating !== undefined) defaultRating = meta.defaultRating;
       if (meta.kFactor !== undefined) kFactor = meta.kFactor;
       if (meta.calibration !== undefined) calibration = meta.calibration;
-      if (meta.cohesionScaling !== undefined) cohesionScaling = meta.cohesionScaling;
+      if (meta.cohesionPenalty !== undefined) cohesionPenalty = meta.cohesionPenalty;
+      if (meta.cohesionBonus !== undefined) cohesionBonus = meta.cohesionBonus;
+      if (meta.cohesionSoloQ !== undefined) cohesionSoloQ = meta.cohesionSoloQ;
       if (meta.cohesionDampingGames !== undefined) cohesionDampingGames = meta.cohesionDampingGames;
       if (meta.cohesionTolerance !== undefined) cohesionTolerance = meta.cohesionTolerance;
       if (meta.cohesionSteepness !== undefined) cohesionSteepness = meta.cohesionSteepness;
@@ -178,7 +182,9 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
       defaultRating,
       kFactor,
       calibration,
-      cohesionScaling,
+      cohesionPenalty,
+      cohesionBonus,
+      cohesionSoloQ,
       cohesionDampingGames,
       cohesionTolerance,
       cohesionSteepness,
@@ -231,15 +237,15 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
     const oldMmrStr = pr.oldMmr.toFixed(2).padStart(7);
     const newMmrStr = pr.newMmr.toFixed(2).padStart(7);
     const totalDelta = pr.newMmr - pr.oldMmr;
-    const totalDeltaStr = ((totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)).padStart(5);
-    const teamDeltaStr = ((pr.teamShare >= 0 ? '+' : '') + pr.teamShare.toFixed(2)).padStart(5);
-    const personalDeltaStr = ((pr.personalShare >= 0 ? '+' : '') + pr.personalShare.toFixed(2)).padStart(5);
+    const totalDeltaStr = ((totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)).padStart(6);
+    const teamDeltaStr = ((pr.teamShare >= 0 ? '+' : '') + pr.teamShare.toFixed(2)).padStart(6);
+    const personalDeltaStr = ((pr.personalShare >= 0 ? '+' : '') + pr.personalShare.toFixed(2)).padStart(6);
 
     console.log(`  ${pr.side === 'blue' ? 'Blue' : 'Red'} Team:`);
     console.log(
       `    ${pr.player.padEnd(maxNameLen)} - [mmr] ${oldMmrStr} -> ${newMmrStr} ` +
       `(${totalDeltaStr}: ${teamDeltaStr}, ${personalDeltaStr})  ` +
-      `[cohesion] ${pr.oldCohesion.toFixed(2)} -> ${pr.newCohesion.toFixed(2)}`
+      `[cohesion] ${pr.oldCohesion.toFixed(2)}, ${((pr.personalCohesionBonus >= 0 ? '+' : '') + pr.personalCohesionBonus.toFixed(2)).padStart(6)}`
     );
     console.log('');
 
@@ -315,14 +321,14 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
       const oldMmrStr = pr.oldMmr.toFixed(2).padStart(7);
       const newMmrStr = pr.newMmr.toFixed(2).padStart(7);
       const totalDelta = pr.newMmr - pr.oldMmr;
-      const totalDeltaStr = ((totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)).padStart(5);
-      const teamDeltaStr = ((pr.teamShare >= 0 ? '+' : '') + pr.teamShare.toFixed(2)).padStart(5);
-      const personalDeltaStr = ((pr.personalShare >= 0 ? '+' : '') + pr.personalShare.toFixed(2)).padStart(5);
+      const totalDeltaStr = ((totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)).padStart(6);
+      const teamDeltaStr = ((pr.teamShare >= 0 ? '+' : '') + pr.teamShare.toFixed(2)).padStart(6);
+      const personalDeltaStr = ((pr.personalShare >= 0 ? '+' : '') + pr.personalShare.toFixed(2)).padStart(6);
 
       console.log(
         `    ${pr.player.padEnd(maxNameLen)} - [mmr] ${oldMmrStr} -> ${newMmrStr} ` +
         `(${totalDeltaStr}: ${teamDeltaStr}, ${personalDeltaStr})  ` +
-        `[cohesion] ${pr.oldCohesion.toFixed(2)} -> ${pr.newCohesion.toFixed(2)}`
+        `[cohesion] ${pr.oldCohesion.toFixed(2)}, ${((pr.personalCohesionBonus >= 0 ? '+' : '') + pr.personalCohesionBonus.toFixed(2)).padStart(6)}`
       );
     }
     console.log('');
@@ -336,14 +342,14 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
       const oldMmrStr = pr.oldMmr.toFixed(2).padStart(7);
       const newMmrStr = pr.newMmr.toFixed(2).padStart(7);
       const totalDelta = pr.newMmr - pr.oldMmr;
-      const totalDeltaStr = ((totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)).padStart(5);
-      const teamDeltaStr = ((pr.teamShare >= 0 ? '+' : '') + pr.teamShare.toFixed(2)).padStart(5);
-      const personalDeltaStr = ((pr.personalShare >= 0 ? '+' : '') + pr.personalShare.toFixed(2)).padStart(5);
+      const totalDeltaStr = ((totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)).padStart(6);
+      const teamDeltaStr = ((pr.teamShare >= 0 ? '+' : '') + pr.teamShare.toFixed(2)).padStart(6);
+      const personalDeltaStr = ((pr.personalShare >= 0 ? '+' : '') + pr.personalShare.toFixed(2)).padStart(6);
 
       console.log(
         `    ${pr.player.padEnd(maxNameLen)} - [mmr] ${oldMmrStr} -> ${newMmrStr} ` +
         `(${totalDeltaStr}: ${teamDeltaStr}, ${personalDeltaStr})  ` +
-        `[cohesion] ${pr.oldCohesion.toFixed(2)} -> ${pr.newCohesion.toFixed(2)}`
+        `[cohesion] ${pr.oldCohesion.toFixed(2)}, ${((pr.personalCohesionBonus >= 0 ? '+' : '') + pr.personalCohesionBonus.toFixed(2)).padStart(6)}`
       );
     }
     console.log('');

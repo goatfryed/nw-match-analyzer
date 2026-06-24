@@ -25,10 +25,12 @@ export default {
          * +75: 60.7% wr
          * +120: 66.6% wr
          */
-        "cohesionScaling": 120,
+        "cohesionPenalty": 75,
+        "cohesionBonus": 30,
+        "cohesionSoloQ": 0.666,
         "cohesionDampingGames": 10,
         "cohesionTolerance": 0.12,
-        "cohesionSteepness": 2.0,
+        "cohesionSteepness": 2.5,
         "scoreFactor": 3,
         "individualWeight": 0.4,
     }
