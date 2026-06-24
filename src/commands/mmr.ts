@@ -27,11 +27,13 @@ export async function calculateSourceMmr(options: {
   rebuild?: boolean;
   from?: string;
   to?: string;
+  scoreFactor?: number;
 }): Promise<void> {
   const defaultRating = options.defaultRating ?? (config as any).mmr?.defaultRating ?? 1500;
   const kFactor = options.kFactor ?? (config as any).mmr?.kFactor ?? 32;
   const generations = options.generations ?? 1;
   const calibration = options.calibration ?? 10;
+  const scoreFactor = options.scoreFactor ?? (config as any).mmr?.scoreFactor ?? 10;
 
   const cohesionScaling = (config as any).mmr?.cohesionScaling ?? 100;
   const cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
@@ -147,6 +149,7 @@ export async function calculateSourceMmr(options: {
     previousFriendshipsSameSide,
     previousMatchHead,
     maxRowsPerGame,
+    scoreFactor,
   });
 
   const tmpDir = path.resolve(process.cwd(), '.tmp');
@@ -214,15 +217,41 @@ export async function calculateSourceMmr(options: {
   const keptMatches = previousMatchRecords.filter((r) => prefixGameIds.has(r['game id']));
 
   const matchesCsvRows: string[][] = [
-    ['game id', 'date', 'winner', 'mmr blue', 'avg mmr blue', 'cohesion blue', 'mmr red', 'avg mmr red', 'cohesion red']
+    [
+      'game id',
+      'date',
+      'winner',
+      'score blue',
+      'score red',
+      'mmr blue',
+      'avg mmr blue',
+      'cohesion blue',
+      'mmr red',
+      'avg mmr red',
+      'cohesion red',
+    ]
   ];
 
   // Add kept matches
   for (const r of keptMatches) {
+    let scoreBlue = r['score blue'];
+    let scoreRed = r['score red'];
+    if (scoreBlue === undefined || scoreBlue === '' || scoreRed === undefined || scoreRed === '') {
+      const winner = r['winner'];
+      if (winner === 'blue') {
+        scoreBlue = '1000';
+        scoreRed = '500';
+      } else {
+        scoreBlue = '500';
+        scoreRed = '1000';
+      }
+    }
     matchesCsvRows.push([
       r['game id'],
       r['date'] || '',
       r['winner'],
+      String(scoreBlue),
+      String(scoreRed),
       r['mmr blue'],
       r['avg mmr blue'],
       r['cohesion blue'],
@@ -238,6 +267,8 @@ export async function calculateSourceMmr(options: {
       m.gameId,
       m.date,
       m.winner,
+      String(m.scoreBlue),
+      String(m.scoreRed),
       m.mmrBlue.toFixed(2),
       m.avgMmrBlue.toFixed(2),
       m.cohesionBlue.toFixed(2),

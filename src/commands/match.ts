@@ -9,6 +9,8 @@ interface CsvMatchRecord {
   gameId: string;
   date: string;
   winner: string;
+  scoreBlue: number;
+  scoreRed: number;
   mmrBlue: number;
   avgMmrBlue: number;
   cohesionBlue: number;
@@ -37,17 +39,32 @@ export async function runMatchList(options: {
     trim: true,
   });
 
-  const matches: CsvMatchRecord[] = records.map((r: any) => ({
-    gameId: r['game id'],
-    date: r['date'] || '',
-    winner: r['winner'],
-    mmrBlue: parseFloat(r['mmr blue']),
-    avgMmrBlue: parseFloat(r['avg mmr blue']),
-    cohesionBlue: parseFloat(r['cohesion blue']),
-    mmrRed: parseFloat(r['mmr red']),
-    avgMmrRed: parseFloat(r['avg mmr red']),
-    cohesionRed: parseFloat(r['cohesion red']),
-  }));
+  const matches: CsvMatchRecord[] = records.map((r: any) => {
+    let scoreBlue = parseInt(r['score blue'], 10);
+    let scoreRed = parseInt(r['score red'], 10);
+    if (isNaN(scoreBlue) || isNaN(scoreRed)) {
+      if (r['winner'] === 'blue') {
+        scoreBlue = 1000;
+        scoreRed = 500;
+      } else {
+        scoreBlue = 500;
+        scoreRed = 1000;
+      }
+    }
+    return {
+      gameId: r['game id'],
+      date: r['date'] || '',
+      winner: r['winner'],
+      scoreBlue,
+      scoreRed,
+      mmrBlue: parseFloat(r['mmr blue']),
+      avgMmrBlue: parseFloat(r['avg mmr blue']),
+      cohesionBlue: parseFloat(r['cohesion blue']),
+      mmrRed: parseFloat(r['mmr red']),
+      avgMmrRed: parseFloat(r['avg mmr red']),
+      cohesionRed: parseFloat(r['cohesion red']),
+    };
+  });
 
   let displayed: CsvMatchRecord[] = [];
   if (options.tail) {
@@ -64,6 +81,8 @@ export async function runMatchList(options: {
     'Game ID'.padEnd(20) +
     'Date'.padEnd(20) +
     'Winner'.padEnd(8) +
+    'Blue Score'.padEnd(12) +
+    'Red Score'.padEnd(12) +
     'Favorite'.padEnd(10) +
     'Blue MMR'.padEnd(12) +
     'Blue Avg'.padEnd(12) +
@@ -72,7 +91,7 @@ export async function runMatchList(options: {
     'Red Avg'.padEnd(12) +
     'Red Coh'
   );
-  console.log('  ' + '-'.repeat(125));
+  console.log('  ' + '-'.repeat(150));
 
   displayed.forEach((m) => {
     const favorite = m.mmrBlue - m.mmrRed;
@@ -84,6 +103,8 @@ export async function runMatchList(options: {
       m.gameId.padEnd(20) +
       m.date.padEnd(20) +
       m.winner.padEnd(8) +
+      String(m.scoreBlue).padEnd(12) +
+      String(m.scoreRed).padEnd(12) +
       favStr.padEnd(10) +
       m.mmrBlue.toFixed(2).padEnd(12) +
       m.avgMmrBlue.toFixed(2).padEnd(12) +
@@ -156,17 +177,32 @@ export async function runMatchShow(matchRef: string): Promise<void> {
     trim: true,
   });
 
-  const matches: CsvMatchRecord[] = records.map((r: any) => ({
-    gameId: r['game id'],
-    date: r['date'] || '',
-    winner: r['winner'],
-    mmrBlue: parseFloat(r['mmr blue']),
-    avgMmrBlue: parseFloat(r['avg mmr blue']),
-    cohesionBlue: parseFloat(r['cohesion blue']),
-    mmrRed: parseFloat(r['mmr red']),
-    avgMmrRed: parseFloat(r['avg mmr red']),
-    cohesionRed: parseFloat(r['cohesion red']),
-  }));
+  const matches: CsvMatchRecord[] = records.map((r: any) => {
+    let scoreBlue = parseInt(r['score blue'], 10);
+    let scoreRed = parseInt(r['score red'], 10);
+    if (isNaN(scoreBlue) || isNaN(scoreRed)) {
+      if (r['winner'] === 'blue') {
+        scoreBlue = 1000;
+        scoreRed = 500;
+      } else {
+        scoreBlue = 500;
+        scoreRed = 1000;
+      }
+    }
+    return {
+      gameId: r['game id'],
+      date: r['date'] || '',
+      winner: r['winner'],
+      scoreBlue,
+      scoreRed,
+      mmrBlue: parseFloat(r['mmr blue']),
+      avgMmrBlue: parseFloat(r['avg mmr blue']),
+      cohesionBlue: parseFloat(r['cohesion blue']),
+      mmrRed: parseFloat(r['mmr red']),
+      avgMmrRed: parseFloat(r['avg mmr red']),
+      cohesionRed: parseFloat(r['cohesion red']),
+    };
+  });
 
   let matchHeadIndex = matches.length - 1;
   const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
@@ -254,11 +290,13 @@ export async function runMatchShow(matchRef: string): Promise<void> {
   console.log(`  Favorite:             ${favStr}`);
   console.log('');
   console.log(`  Blue Team:`);
+  console.log(`    Score:              ${targetMatch.scoreBlue}`);
   console.log(`    Effective MMR:      ${targetMatch.mmrBlue.toFixed(2)}`);
   console.log(`    Base MMR (Avg):     ${targetMatch.avgMmrBlue.toFixed(2)}`);
   console.log(`    Cohesion Elo Bonus: ${cohBlueStr}`);
   console.log('');
   console.log(`  Red Team:`);
+  console.log(`    Score:              ${targetMatch.scoreRed}`);
   console.log(`    Effective MMR:      ${targetMatch.mmrRed.toFixed(2)}`);
   console.log(`    Base MMR (Avg):     ${targetMatch.avgMmrRed.toFixed(2)}`);
   console.log(`    Cohesion Elo Bonus: ${cohRedStr}`);

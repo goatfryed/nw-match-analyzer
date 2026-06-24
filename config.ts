@@ -14,7 +14,7 @@ export default {
     },
     "mmr": {
         "defaultRating": 1500,
-        "kFactor": 32,
+        "kFactor": 64,
         "matchThreshold": 5,
         "amount": 20,
         "sort": "descending",
@@ -25,7 +25,8 @@ export default {
          * +75: 60.7% wr
          * +120: 66.6% wr
          */
-        "cohesionScaling": 75,
-        "cohesionDampingGames": 10
+        "cohesionScaling": 120,
+        "cohesionDampingGames": 5,
+        "scoreFactor": 3,
     }
 }

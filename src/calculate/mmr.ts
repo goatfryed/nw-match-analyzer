@@ -34,6 +34,7 @@ export interface MmrOptions {
   previousFriendshipsSameSide?: Map<string, number>;
   previousMatchHead?: string;
   maxRowsPerGame?: number;
+  scoreFactor?: number;
 }
 
 interface SortedMatch {
@@ -58,6 +59,30 @@ function parseDate(dateStr: string): Date {
   const fallback = Date.parse(dateStr);
   return isNaN(fallback) ? new Date(0) : new Date(fallback);
 }
+
+function getTeamScore(participants: CsvRecord[], side: string): number {
+  const p = participants.find((x) => x.side === side);
+  return p && p.GameScore ? parseInt(p.GameScore, 10) || 0 : 0;
+}
+
+function calculateOutcomeShares(
+  winnerScore: number,
+  loserScore: number,
+  scoreFactor: number
+): { winnerShare: number; loserShare: number } {
+  const sMax = winnerScore;
+  const totalPoints = 1000 + 2 * scoreFactor * sMax;
+  if (totalPoints <= 0) {
+    return { winnerShare: 0.5, loserShare: 0.5 };
+  }
+  const winnerRaw = 1000 + scoreFactor * (2 * sMax - loserScore);
+  const loserRaw = scoreFactor * loserScore;
+  return {
+    winnerShare: winnerRaw / totalPoints,
+    loserShare: loserRaw / totalPoints,
+  };
+}
+
 
 function resolveIndex(
   ref: string | undefined,
@@ -112,6 +137,8 @@ export interface MatchRecord {
   gameId: string;
   date: string;
   winner: 'blue' | 'red';
+  scoreBlue: number;
+  scoreRed: number;
   mmrBlue: number;
   avgMmrBlue: number;
   cohesionBlue: number;
@@ -131,6 +158,7 @@ export function calculateMmrAndFriendship(
   prefixGameIds: Set<string>;
 } {
   const maxRowsPerGame = options.maxRowsPerGame ?? 45;
+  const scoreFactor = options.scoreFactor ?? 10;
   const {
     defaultRating,
     kFactor,
@@ -210,6 +238,10 @@ export function calculateMmrAndFriendship(
 
   const matchesToProcess = sortedMatches.slice(fromIndex, toIndex + 1);
 
+  if (matchesToProcess.length > 0) {
+    console.log(`Processing matches starting from ${matchesToProcess[0].gameId}`);
+  }
+
   const playerStatsMap = new Map<string, PlayerStats>();
   const tracker = new CohesionTracker();
 
@@ -279,8 +311,54 @@ export function calculateMmrAndFriendship(
         }
       }
 
-      const blueOutcome = blueWon ? 1 : 0;
-      const redOutcome = redWon ? 1 : 0;
+      const winnerColor: 'blue' | 'red' | undefined = blueWon ? 'blue' : (redWon ? 'red' : undefined);
+      const loserColor: 'blue' | 'red' | undefined = winnerColor ? (winnerColor === 'blue' ? 'red' : 'blue') : undefined;
+
+      // Resolve team scores from first blue/red participants
+      let scoreBlue = getTeamScore(participants, 'blue');
+      let scoreRed = getTeamScore(participants, 'red');
+
+      // Validate scores and trigger warnings if they exceed normal ranges
+      if (scoreBlue >= 1000 && scoreRed >= 1000) {
+        console.warn(`⚠️ Warning: Match "${match.matchKey}" has scores >= 1000 for both sides (Blue: ${scoreBlue}, Red: ${scoreRed})`);
+      } else if (scoreBlue > 1100 || scoreRed > 1100) {
+        console.warn(`⚠️ Warning: Match "${match.matchKey}" has a side with score > 1100 (Blue: ${scoreBlue}, Red: ${scoreRed})`);
+      }
+
+      // If both side scores are 0, fall back based on winner
+      if (scoreBlue === 0 && scoreRed === 0) {
+        if (winnerColor === 'blue') {
+          scoreBlue = 1000;
+          scoreRed = 600;
+        } else if (winnerColor === 'red') {
+          scoreRed = 1000;
+          scoreBlue = 600;
+        } else {
+          scoreBlue = 1000;
+          scoreRed = 1000;
+        }
+      } else {
+        // Cap both scores at 1000
+        scoreBlue = Math.min(1000, scoreBlue);
+        scoreRed = Math.min(1000, scoreRed);
+      }
+
+      let blueOutcome = 0.5;
+      let redOutcome = 0.5;
+
+      if (winnerColor && loserColor) {
+        const winnerScore = winnerColor === 'blue' ? scoreBlue : scoreRed;
+        const loserScore = winnerColor === 'blue' ? scoreRed : scoreBlue;
+        const { winnerShare, loserShare } = calculateOutcomeShares(winnerScore, loserScore, scoreFactor);
+
+        if (winnerColor === 'blue') {
+          blueOutcome = winnerShare;
+          redOutcome = loserShare;
+        } else {
+          blueOutcome = loserShare;
+          redOutcome = winnerShare;
+        }
+      }
 
       const bluePlayers = participants
         .filter((p) => p.side === 'blue')
@@ -337,6 +415,8 @@ export function calculateMmrAndFriendship(
           gameId: match.gameId,
           date: matchDateStr,
           winner: blueWon ? 'blue' : 'red',
+          scoreBlue,
+          scoreRed,
           mmrBlue: blueEffective,
           avgMmrBlue: blueAvg,
           cohesionBlue: blueCohesionBonus,
@@ -356,8 +436,8 @@ export function calculateMmrAndFriendship(
         const k = kFactor * (2.0 - w);
         stats.mmr += k * (blueOutcome - expectedBlue);
         stats.games++;
-        stats.wins += blueOutcome;
-        stats.losses += (1 - blueOutcome);
+        stats.wins += blueWon ? 1 : 0;
+        stats.losses += blueWon ? 0 : 1;
         if (stats.calibrationGames < calibration) {
           stats.calibrationGames++;
         }
@@ -368,8 +448,8 @@ export function calculateMmrAndFriendship(
         const k = kFactor * (2.0 - w);
         stats.mmr += k * (redOutcome - expectedRed);
         stats.games++;
-        stats.wins += redOutcome;
-        stats.losses += (1 - redOutcome);
+        stats.wins += redWon ? 1 : 0;
+        stats.losses += redWon ? 0 : 1;
         if (stats.calibrationGames < calibration) {
           stats.calibrationGames++;
         }
@@ -384,6 +464,9 @@ export function calculateMmrAndFriendship(
   const friendships = generateFriendzoneRecords(tracker);
 
   const lastProcessed = matchesToProcess[matchesToProcess.length - 1];
+  if (lastProcessed) {
+    console.log(`Processed ${matchesToProcess.length} matches up to ${lastProcessed.gameId}`);
+  }
   const matchHead = lastProcessed ? lastProcessed.gameId : (previousMatchHead || '');
 
   const prefixGameIds = new Set<string>();

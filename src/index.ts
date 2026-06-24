@@ -132,6 +132,7 @@ program
   .option('--rebuild', 'rebuild ratings and friendships from scratch')
   .option('--from <string>', 'start game ID reference (e.g. start, head, gameId, gameId+N)')
   .option('--to <string>', 'end game ID reference (e.g. gameId-N)')
+  .option('--score-factor <number>', 'multiplier for team scores relative to win bonus', (val) => parseFloat(val))
   .action(async (options) => {
     try {
       await calculateSourceMmr(options);

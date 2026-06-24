@@ -39,7 +39,7 @@ export async function uploadCsvSheet(type?: string): Promise<void> {
   const sheetsClient = getSheetsClient(['https://www.googleapis.com/auth/spreadsheets']);
 
   const sheetTitle = await getSheetTitle(sheetsClient, spreadsheetId, matchSheetId);
-  const uploadRange = `${sheetTitle}!A:I`;
+  const uploadRange = `${sheetTitle}!A:K`;
 
   console.log(`Clearing existing content in range "${uploadRange}"...`);
   await sheetsClient.spreadsheets.values.clear({
