@@ -10,6 +10,7 @@ import { validateSourceData } from './commands/validate.js';
 import { calculateSourceMmr, runMmrList, runMmrShow } from './commands/mmr.js';
 import { runMatchList, runMatchShow } from './commands/match.js';
 import { uploadCsvSheet } from './commands/upload.js';
+import { runExplain } from './commands/explain.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -204,6 +205,18 @@ match
       await runMatchShow(matchRef);
     } catch (error) {
       console.error('Error running match show:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('explain <gameId> [player]')
+  .description('Simulate and explain the outcome of a game on MMR and friendships')
+  .action(async (gameId, player) => {
+    try {
+      await runExplain(gameId, player);
+    } catch (error) {
+      console.error('Error running explain:', error);
       process.exit(1);
     }
   });

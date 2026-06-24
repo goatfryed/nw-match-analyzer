@@ -26,8 +26,8 @@ export default {
          * +120: 66.6% wr
          */
         "cohesionScaling": 120,
-        "cohesionDampingGames": 5,
+        "cohesionDampingGames": 10,
         "scoreFactor": 3,
-        "individualWeight": 0.45,
+        "individualWeight": 0.4,
     }
 }
