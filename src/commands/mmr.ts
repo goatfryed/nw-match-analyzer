@@ -37,6 +37,8 @@ export async function calculateSourceMmr(options: {
 
   const cohesionScaling = (config as any).mmr?.cohesionScaling ?? 100;
   const cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
+  const cohesionTolerance = (config as any).mmr?.cohesionTolerance ?? 0.12;
+  const cohesionSteepness = (config as any).mmr?.cohesionSteepness ?? 2.0;
   const maxRowsPerGame = (config as any).validation?.maxRowsPerGame;
   const individualWeight = (config as any).mmr?.individualWeight ?? 0.5;
 
@@ -142,6 +144,8 @@ export async function calculateSourceMmr(options: {
     calibration,
     cohesionScaling,
     cohesionDampingGames,
+    cohesionTolerance,
+    cohesionSteepness,
     rebuild,
     fromMatchRef: options.from,
     toMatchRef: options.to,
@@ -300,6 +304,8 @@ export async function calculateSourceMmr(options: {
     kFactor,
     cohesionScaling,
     cohesionDampingGames,
+    cohesionTolerance,
+    cohesionSteepness,
     matchHead
   };
   fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');

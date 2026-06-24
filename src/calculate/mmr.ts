@@ -26,6 +26,8 @@ export interface MmrOptions {
   calibration: number;
   cohesionScaling: number;
   cohesionDampingGames: number;
+  cohesionTolerance?: number;
+  cohesionSteepness?: number;
   rebuild?: boolean;
   fromMatchRef?: string;
   toMatchRef?: string;
@@ -173,6 +175,8 @@ export function processSingleMatch(
     calibration: number;
     cohesionScaling: number;
     cohesionDampingGames: number;
+    cohesionTolerance?: number;
+    cohesionSteepness?: number;
     scoreFactor: number;
     individualWeight: number;
   }
@@ -184,6 +188,8 @@ export function processSingleMatch(
     calibration,
     cohesionScaling,
     cohesionDampingGames,
+    cohesionTolerance = 0.12,
+    cohesionSteepness = 2.0,
     scoreFactor,
     individualWeight,
   } = options;
@@ -292,8 +298,20 @@ export function processSingleMatch(
     ? redStats.reduce((sum, s, idx) => sum + s.mmr * redWeights[idx], 0) / sumRedWeights
     : defaultRating;
 
-  const blueCohesionBonus = tracker.getTeamCohesionBonus(bluePlayers, cohesionDampingGames, cohesionScaling);
-  const redCohesionBonus = tracker.getTeamCohesionBonus(redPlayers, cohesionDampingGames, cohesionScaling);
+  const blueCohesionBonus = tracker.getTeamCohesionBonus(
+    bluePlayers,
+    cohesionDampingGames,
+    cohesionScaling,
+    cohesionTolerance,
+    cohesionSteepness
+  );
+  const redCohesionBonus = tracker.getTeamCohesionBonus(
+    redPlayers,
+    cohesionDampingGames,
+    cohesionScaling,
+    cohesionTolerance,
+    cohesionSteepness
+  );
 
   const blueEffective = blueAvg + blueCohesionBonus;
   const redEffective = redAvg + redCohesionBonus;
@@ -426,6 +444,8 @@ export function calculateMmrAndFriendship(
     calibration,
     cohesionScaling,
     cohesionDampingGames,
+    cohesionTolerance,
+    cohesionSteepness,
     rebuild = false,
     fromMatchRef,
     toMatchRef,
@@ -559,6 +579,8 @@ export function calculateMmrAndFriendship(
           calibration,
           cohesionScaling,
           cohesionDampingGames,
+          cohesionTolerance,
+          cohesionSteepness,
           scoreFactor,
           individualWeight,
         }

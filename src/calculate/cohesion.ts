@@ -60,11 +60,11 @@ export class CohesionTracker {
     const sideCount = this.sameSide.get(key) || 0;
     const rawIndex = sideCount / gameCount;
 
-    // Cap the friendship index excess at 0 (only positive relationships count as cohesion)
-    const excess = Math.max(0, rawIndex - 0.5);
+    const excess = rawIndex - 0.5;
     const dampingWeight = Math.min(1.0, gameCount / minGames);
 
-    return 0.5 + excess * dampingWeight;
+    const value = 0.5 + excess * dampingWeight;
+    return Math.max(0.0, Math.min(1.0, value));
   }
 
   /**
@@ -91,19 +91,79 @@ export class CohesionTracker {
   /**
    * Calculate the team cohesion Elo bonus
    */
-  getTeamCohesionBonus(players: string[], minGames: number, scalingFactor: number): number {
+  getTeamCohesionBonus(
+    players: string[],
+    minGames: number,
+    scalingFactor: number,
+    u0_pos = 0.12,
+    p = 2.0
+  ): number {
     if (players.length <= 1 || scalingFactor === 0) {
       return 0;
     }
 
     let totalCp = 0;
-    for (const p of players) {
-      totalCp += this.getPlayerCohesion(p, players, minGames);
+    for (const player of players) {
+      totalCp += this.getPlayerCohesion(player, players, minGames);
     }
 
     const teamCohesion = totalCp / players.length;
 
-    // Normalizing so that scalingFactor maps exactly to a full 5-stack with 1.0 friendship (excess 0.125)
-    return scalingFactor * (teamCohesion - 0.50) / 0.125;
+    const B = getExpectedSoloBaseline(players.length);
+
+    let u = 0;
+    if (teamCohesion >= B) {
+      const denominator = 1.0 - B;
+      u = denominator > 0 ? (teamCohesion - B) / denominator : 0;
+    } else {
+      u = B > 0 ? (teamCohesion - B) / B : 0;
+    }
+
+    const modifier = generalizedSCurve(u, u0_pos, p);
+    return scalingFactor * modifier;
   }
+}
+
+function generalizedSCurve(u: number, u0_pos: number, p: number): number {
+  let u0 = u0_pos;
+  let absU = u;
+  if (u < 0) {
+    u0 = Math.min(1.0, 2.0 * u0_pos);
+    absU = -u;
+  }
+
+  let y = 0;
+  if (absU <= u0) {
+    y = u0 > 0 ? Math.pow(absU / u0, p) * u0 : absU;
+  } else {
+    y = u0 < 1.0 ? 1.0 - Math.pow((1.0 - absU) / (1.0 - u0), p) * (1.0 - u0) : absU;
+  }
+
+  return u >= 0 ? y : -y;
+}
+
+const SOLO_BASELINE_POINTS = [
+  [5, 0.50],
+  [7, 0.53],
+  [9, 0.56],
+  [11, 0.59],
+  [13, 0.61],
+  [15, 0.63],
+  [17, 0.64],
+  [19, 0.65],
+  [21, 0.65],
+  [22, 0.65]
+];
+
+function getExpectedSoloBaseline(teamSize: number): number {
+  if (teamSize <= 5) return 0.50;
+  if (teamSize >= 22) return 0.65;
+  for (let i = 0; i < SOLO_BASELINE_POINTS.length - 1; i++) {
+    const [s1, v1] = SOLO_BASELINE_POINTS[i];
+    const [s2, v2] = SOLO_BASELINE_POINTS[i + 1];
+    if (teamSize >= s1 && teamSize <= s2) {
+      return v1 + ((teamSize - s1) / (s2 - s1)) * (v2 - v1);
+    }
+  }
+  return 0.65;
 }

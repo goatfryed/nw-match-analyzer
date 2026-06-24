@@ -27,6 +27,8 @@ export default {
          */
         "cohesionScaling": 120,
         "cohesionDampingGames": 10,
+        "cohesionTolerance": 0.12,
+        "cohesionSteepness": 2.0,
         "scoreFactor": 3,
         "individualWeight": 0.4,
     }

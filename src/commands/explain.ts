@@ -23,6 +23,8 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
   let calibration = (config as any).mmr?.calibration ?? 10;
   let cohesionScaling = (config as any).mmr?.cohesionScaling ?? 100;
   let cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
+  let cohesionTolerance = (config as any).mmr?.cohesionTolerance ?? 0.12;
+  let cohesionSteepness = (config as any).mmr?.cohesionSteepness ?? 2.0;
   let scoreFactor = (config as any).mmr?.scoreFactor ?? 10;
   let individualWeight = (config as any).mmr?.individualWeight ?? 0.5;
   let matchHead: string | undefined;
@@ -36,6 +38,8 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
       if (meta.calibration !== undefined) calibration = meta.calibration;
       if (meta.cohesionScaling !== undefined) cohesionScaling = meta.cohesionScaling;
       if (meta.cohesionDampingGames !== undefined) cohesionDampingGames = meta.cohesionDampingGames;
+      if (meta.cohesionTolerance !== undefined) cohesionTolerance = meta.cohesionTolerance;
+      if (meta.cohesionSteepness !== undefined) cohesionSteepness = meta.cohesionSteepness;
       if (meta.scoreFactor !== undefined) scoreFactor = meta.scoreFactor;
       if (meta.individualWeight !== undefined) individualWeight = meta.individualWeight;
       if (meta.matchHead !== undefined) matchHead = meta.matchHead;
@@ -176,6 +180,8 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
       calibration,
       cohesionScaling,
       cohesionDampingGames,
+      cohesionTolerance,
+      cohesionSteepness,
       scoreFactor,
       individualWeight,
     }
