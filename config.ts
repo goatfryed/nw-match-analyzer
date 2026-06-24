@@ -13,8 +13,8 @@ export default {
         "maxRowsPerGame": 45
     },
     "mmr": {
-        "defaultRating": 1500,
-        "kFactor": 64,
+        "defaultRating": 1000,
+        "kFactor": 100,
         "matchThreshold": 5,
         "amount": 20,
         "sort": "descending",
@@ -28,5 +28,6 @@ export default {
         "cohesionScaling": 120,
         "cohesionDampingGames": 5,
         "scoreFactor": 3,
+        "individualWeight": 0.45,
     }
 }

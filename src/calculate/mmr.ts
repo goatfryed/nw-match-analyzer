@@ -35,6 +35,7 @@ export interface MmrOptions {
   previousMatchHead?: string;
   maxRowsPerGame?: number;
   scoreFactor?: number;
+  individualWeight?: number;
 }
 
 interface SortedMatch {
@@ -159,6 +160,7 @@ export function calculateMmrAndFriendship(
 } {
   const maxRowsPerGame = options.maxRowsPerGame ?? 45;
   const scoreFactor = options.scoreFactor ?? 10;
+  const individualWeight = options.individualWeight ?? 0.5;
   const {
     defaultRating,
     kFactor,
@@ -434,7 +436,9 @@ export function calculateMmrAndFriendship(
       for (const stats of blueStats) {
         const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
         const k = kFactor * (2.0 - w);
-        stats.mmr += k * (blueOutcome - expectedBlue);
+        const expectedIndiv = 1 / (1 + Math.pow(10, (redEffective - stats.mmr) / 400));
+        const expectedHybrid = (1 - individualWeight) * expectedBlue + individualWeight * expectedIndiv;
+        stats.mmr += k * (blueOutcome - expectedHybrid);
         stats.games++;
         stats.wins += blueWon ? 1 : 0;
         stats.losses += blueWon ? 0 : 1;
@@ -446,7 +450,9 @@ export function calculateMmrAndFriendship(
       for (const stats of redStats) {
         const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
         const k = kFactor * (2.0 - w);
-        stats.mmr += k * (redOutcome - expectedRed);
+        const expectedIndiv = 1 / (1 + Math.pow(10, (blueEffective - stats.mmr) / 400));
+        const expectedHybrid = (1 - individualWeight) * expectedRed + individualWeight * expectedIndiv;
+        stats.mmr += k * (redOutcome - expectedHybrid);
         stats.games++;
         stats.wins += redWon ? 1 : 0;
         stats.losses += redWon ? 0 : 1;
