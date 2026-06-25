@@ -3,6 +3,7 @@ export default {
         "spreadsheetId": "1lJrTw9okwrOi9CyzLr_M3ecYi8cDcG4m-4Gtx-NsgCQ",
         "scoreboardSheetId": 1902818640,
         "matchSheetId": 258871598,
+        "mmrSheetId": 558216310,
     },
     "friendzone": {
         "matchThreshold": 5,

@@ -543,7 +543,7 @@ export async function runMmrListGrinder(options: {
     trim: true,
   });
 
-  const players = records.map((r: any) => ({
+  const players: { player: string; games: number }[] = records.map((r: any) => ({
     player: r.player,
     games: parseInt(r.games, 10) || 0,
   }));

@@ -11,6 +11,7 @@ import { calculateSourceMmr, runMmrList, runMmrShow, runMmrListGrinder } from '.
 import { runMatchList, runMatchShow } from './commands/match.js';
 import { uploadCsvSheet } from './commands/upload.js';
 import { runExplain } from './commands/explain.js';
+import { runFixCommand } from './commands/fix.js';
 
 // Load environment variables
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
@@ -48,7 +49,7 @@ program
 
 program
   .command('upload [type]')
-  .description('Upload local CSV data to Google Sheets (e.g. matches)')
+  .description('Upload local CSV data to Google Sheets (e.g. "matches", "mmr" or leave empty to upload both)')
   .action(async (type) => {
     try {
       await uploadCsvSheet(type);
@@ -236,6 +237,18 @@ list
       await runMmrListGrinder(options);
     } catch (error) {
       console.error('Error running grinder list:', error);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('fix')
+  .description('Scan source CSV for OCR typos and unknown players')
+  .action(async () => {
+    try {
+      await runFixCommand();
+    } catch (error) {
+      console.error('Error running fix command:', error);
       process.exit(1);
     }
   });

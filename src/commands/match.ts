@@ -241,12 +241,12 @@ export async function runMatchShow(matchRef: string): Promise<void> {
       blueRoster = matchParticipants
         .filter((r: any) => r.side === 'blue')
         .map((r: any) => r.player)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        .sort((a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
 
       redRoster = matchParticipants
         .filter((r: any) => r.side === 'red')
         .map((r: any) => r.player)
-        .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+        .sort((a: string, b: string) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     } catch (e) {
       // Ignore
     }

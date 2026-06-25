@@ -177,7 +177,11 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
   const sameSideBefore = new Map(tracker.sameSide);
 
   const result = processSingleMatch(
-    targetMatch,
+    {
+      gameId: targetMatch.gameId,
+      date: targetMatch.participants[0]?.date || '',
+      participants: targetMatch.participants,
+    },
     playerStatsMap,
     tracker,
     {
