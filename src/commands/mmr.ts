@@ -169,9 +169,11 @@ export async function calculateSourceMmr(options: {
     fs.mkdirSync(tmpDir, { recursive: true });
   }
 
+  const seedingGames = (config as any).mmr?.seedingGames ?? 10;
+
   // 1. Save ratings to .tmp/mmr.csv with delta values and ranks
-  // Sort by MMR descending first to assign ranks
-  const rankedPlayers = [...players].sort((a, b) => b.mmr - a.mmr);
+  // Sort by MMR descending first to assign ranks. Only players with games >= seedingGames get a rank.
+  const rankedPlayers = [...players].filter((p) => p.games >= seedingGames).sort((a, b) => b.mmr - a.mmr);
   const playerRankMap = new Map<string, number>();
   rankedPlayers.forEach((p, idx) => {
     playerRankMap.set(p.player, idx + 1);
@@ -333,14 +335,13 @@ interface CsvPlayerStats {
 }
 
 export async function runMmrList(options: {
-  threshold?: number;
   lines?: number;
   skip?: number;
   sort?: string;
   tail?: boolean;
   delta?: boolean;
 }): Promise<void> {
-  const threshold = options.threshold ?? (config as any).mmr?.matchThreshold ?? 5;
+  const seedingGames = (config as any).mmr?.seedingGames ?? 10;
   const lines = options.lines ?? (config as any).mmr?.amount ?? 20;
   const skip = options.skip ?? 0;
   const sortInput = (options.sort || (config as any).mmr?.sort || 'descending').toLowerCase();
@@ -377,11 +378,10 @@ export async function runMmrList(options: {
     delta: parseFloat(r.delta) || 0.0,
   }));
 
-  const filtered = players.filter((p) => p.games >= threshold);
+  const filtered = players;
 
-  // Assign dynamic MMR rank within the filtered subset
-  // First sort by MMR descending to get the ranks
-  const sortedByMmr = [...filtered].sort((a, b) => b.mmr - a.mmr);
+  // Assign dynamic MMR rank within the subset (only players with games >= seedingGames get ranked)
+  const sortedByMmr = [...filtered].filter((p) => p.games >= seedingGames).sort((a, b) => b.mmr - a.mmr);
   const playerRankMap = new Map<string, number>();
   sortedByMmr.forEach((p, idx) => {
     playerRankMap.set(p.player, idx + 1);
@@ -461,13 +461,13 @@ export async function runMmrList(options: {
   }
 }
 
-export async function runMmrShow(playerArg: string, options: { threshold?: number } = {}): Promise<void> {
+export async function runMmrShow(playerArg: string): Promise<void> {
   if (!playerArg) {
     console.error('Error: Player name is required.');
     process.exit(1);
   }
 
-  const threshold = options.threshold ?? (config as any).mmr?.matchThreshold ?? 5;
+  const seedingGames = (config as any).mmr?.seedingGames ?? 10;
 
   const mmrCsvPath = path.resolve(process.cwd(), '.tmp/mmr.csv');
   if (!fs.existsSync(mmrCsvPath)) {
@@ -499,15 +499,14 @@ export async function runMmrShow(playerArg: string, options: { threshold?: numbe
     return;
   }
 
-  // Calculate rank within threshold (effective threshold is the minimum of player's games and option threshold)
-  const effectiveThreshold = Math.min(stats.games, threshold);
-  const filtered = players.filter((p) => p.games >= effectiveThreshold);
-  filtered.sort((a, b) => b.mmr - a.mmr); // Descending order for ranking
-
-  let rankStr = 'N/A';
-  const rankIdx = filtered.findIndex((p) => p.player.toLowerCase() === targetLower);
-  if (rankIdx !== -1) {
-    rankStr = `${rankIdx + 1}/${filtered.length}`;
+  let rankStr = '0 (unranked)';
+  if (stats.games >= seedingGames) {
+    const filtered = players.filter((p) => p.games >= seedingGames);
+    filtered.sort((a, b) => b.mmr - a.mmr); // Descending order for ranking
+    const rankIdx = filtered.findIndex((p) => p.player.toLowerCase() === targetLower);
+    if (rankIdx !== -1) {
+      rankStr = `${rankIdx + 1}/${filtered.length}`;
+    }
   }
 
   const winRate = stats.games > 0 ? (stats.wins / stats.games) * 100 : 0;

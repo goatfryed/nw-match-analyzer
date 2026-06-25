@@ -151,7 +151,6 @@ const mmr = program
 mmr
   .command('list')
   .description('Print sorted summary of players MMR')
-  .option('-t, --threshold <number>', 'minimum games played', (val) => parseInt(val, 10))
   .option('-n, --lines <number>', 'number of players to print', (val) => parseInt(val, 10))
   .option('-s, --skip <number>', 'number of players to skip', (val) => parseInt(val, 10))
   .option('--sort <string>', 'sort order (ascending or descending)')
@@ -169,10 +168,9 @@ mmr
 mmr
   .command('show <player>')
   .description('Show MMR profile of a specific player')
-  .option('-t, --threshold <number>', 'minimum games played threshold', (val) => parseInt(val, 10))
-  .action(async (player, options) => {
+  .action(async (player) => {
     try {
-      await runMmrShow(player, options);
+      await runMmrShow(player);
     } catch (error) {
       console.error('Error running MMR show:', error);
       process.exit(1);

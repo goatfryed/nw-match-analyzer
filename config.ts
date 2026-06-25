@@ -18,7 +18,7 @@ export default {
         "kFactor": 80,
         "amount": 20,
         "sort": "descending",
-        "matchThreshold": 10,
+        "seedingGames": 10,
         "defaultLosingScore": 333,
         "calibration": 1,
         /**
