@@ -35,6 +35,7 @@ export interface MmrOptions extends CohesionOptions {
   maxRowsPerGame?: number;
   scoreFactor?: number;
   individualWeight?: number;
+  defaultLosingScore?: number;
 }
 
 export interface SortedMatch {
@@ -174,6 +175,7 @@ export function processSingleMatch(
     cohesionDampingGames: number;
     scoreFactor: number;
     individualWeight: number;
+    defaultLosingScore?: number;
   } & CohesionOptions
 ): MatchResult | null {
   const { participants } = match;
@@ -184,6 +186,7 @@ export function processSingleMatch(
     cohesionDampingGames,
     scoreFactor,
     individualWeight,
+    defaultLosingScore = 600,
   } = options;
 
   let blueWon = false;
@@ -212,10 +215,10 @@ export function processSingleMatch(
   if (scoreBlue === 0 && scoreRed === 0) {
     if (winnerColor === 'blue') {
       scoreBlue = 1000;
-      scoreRed = 600;
+      scoreRed = defaultLosingScore;
     } else if (winnerColor === 'red') {
       scoreRed = 1000;
-      scoreBlue = 600;
+      scoreBlue = defaultLosingScore;
     } else {
       scoreBlue = 1000;
       scoreRed = 1000;
@@ -457,6 +460,7 @@ export function calculateMmrAndFriendship(
   const maxRowsPerGame = options.maxRowsPerGame ?? 45;
   const scoreFactor = options.scoreFactor ?? 10;
   const individualWeight = options.individualWeight ?? 0.5;
+  const defaultLosingScore = options.defaultLosingScore ?? 600;
   const {
     defaultRating,
     kFactor,
@@ -607,6 +611,7 @@ export function calculateMmrAndFriendship(
           cohesionSteepness,
           scoreFactor,
           individualWeight,
+          defaultLosingScore,
         }
       );
 

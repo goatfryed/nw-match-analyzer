@@ -13,11 +13,13 @@ export default {
         "maxRowsPerGame": 45
     },
     "mmr": {
-        "defaultRating": 1000,
-        "kFactor": 100,
-        "matchThreshold": 5,
+        "defaultRating": 1500,
+        "kFactor": 80,
         "amount": 20,
         "sort": "descending",
+        "matchThreshold": 10,
+        "defaultLosingScore": 333,
+        "calibration": 1,
         /**
          * +0: 50% wr
          * +25: 53.6% wr
@@ -25,13 +27,13 @@ export default {
          * +75: 60.7% wr
          * +120: 66.6% wr
          */
-        "cohesionPenalty": 75,
+        "cohesionPenalty": 80,
         "cohesionBonus": 30,
         "cohesionSoloQ": 0.666,
         "cohesionDampingGames": 10,
         "cohesionTolerance": 0.12,
         "cohesionSteepness": 2.5,
-        "scoreFactor": 3,
-        "individualWeight": 0.4,
+        "scoreFactor": 5,
+        "individualWeight": 0.33,
     }
 }

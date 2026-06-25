@@ -29,6 +29,7 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
   let cohesionSteepness = (config as any).mmr?.cohesionSteepness ?? 2.0;
   let scoreFactor = (config as any).mmr?.scoreFactor ?? 10;
   let individualWeight = (config as any).mmr?.individualWeight ?? 0.5;
+  let defaultLosingScore = (config as any).mmr?.defaultLosingScore ?? 600;
   let matchHead: string | undefined;
 
   const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
@@ -46,6 +47,7 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
       if (meta.cohesionSteepness !== undefined) cohesionSteepness = meta.cohesionSteepness;
       if (meta.scoreFactor !== undefined) scoreFactor = meta.scoreFactor;
       if (meta.individualWeight !== undefined) individualWeight = meta.individualWeight;
+      if (meta.defaultLosingScore !== undefined) defaultLosingScore = meta.defaultLosingScore;
       if (meta.matchHead !== undefined) matchHead = meta.matchHead;
     } catch (e) {
       // Ignore and use configuration defaults
@@ -190,6 +192,7 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
       cohesionSteepness,
       scoreFactor,
       individualWeight,
+      defaultLosingScore,
     }
   );
 
