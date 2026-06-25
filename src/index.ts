@@ -7,7 +7,7 @@ import { runFriendzoneShow } from './commands/friendzone/show.js';
 import { runFriendzoneCliques } from './commands/friendzone/cliques.js';
 import { runFriendzoneStacks } from './commands/friendzone/stacks.js';
 import { validateSourceData } from './commands/validate.js';
-import { calculateSourceMmr, runMmrList, runMmrShow } from './commands/mmr.js';
+import { calculateSourceMmr, runMmrList, runMmrShow, runMmrListGrinder } from './commands/mmr.js';
 import { runMatchList, runMatchShow } from './commands/match.js';
 import { uploadCsvSheet } from './commands/upload.js';
 import { runExplain } from './commands/explain.js';
@@ -217,6 +217,25 @@ program
       await runExplain(gameId, player);
     } catch (error) {
       console.error('Error running explain:', error);
+      process.exit(1);
+    }
+  });
+
+const list = program
+  .command('list')
+  .description('Listing commands');
+
+list
+  .command('grinder')
+  .description('Print players sorted by most games played')
+  .option('-n, --lines <number>', 'number of players to print', (val) => parseInt(val, 10))
+  .option('-s, --skip <number>', 'number of players to skip', (val) => parseInt(val, 10))
+  .option('--tail', 'display from the tail (bottom) of the list')
+  .action(async (options) => {
+    try {
+      await runMmrListGrinder(options);
+    } catch (error) {
+      console.error('Error running grinder list:', error);
       process.exit(1);
     }
   });
