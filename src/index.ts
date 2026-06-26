@@ -211,9 +211,10 @@ match
 program
   .command('explain <gameId> [player]')
   .description('Simulate and explain the outcome of a game on MMR and friendships')
-  .action(async (gameId, player) => {
+  .option('--use-config', 'use parameters from config.ts instead of mmr_meta.json')
+  .action(async (gameId, player, options) => {
     try {
-      await runExplain(gameId, player);
+      await runExplain(gameId, player, options);
     } catch (error) {
       console.error('Error running explain:', error);
       process.exit(1);

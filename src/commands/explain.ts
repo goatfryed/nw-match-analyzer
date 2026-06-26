@@ -12,7 +12,11 @@ import {
   SortedMatch
 } from '../calculate/mmr.js';
 
-export async function runExplain(gameIdRef: string, playerArg?: string): Promise<void> {
+export async function runExplain(
+  gameIdRef: string,
+  playerArg?: string,
+  options?: { useConfig?: boolean }
+): Promise<void> {
   if (!gameIdRef) {
     console.error('Error: Game reference is required.');
     process.exit(1);
@@ -30,25 +34,31 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
   let scoreFactor = (config as any).mmr?.scoreFactor ?? 10;
   let individualWeight = (config as any).mmr?.individualWeight ?? 0.5;
   let defaultLosingScore = (config as any).mmr?.defaultLosingScore ?? 600;
+  let rewardPoints = (config as any).mmr?.rewardPoints;
   let matchHead: string | undefined;
 
+  const useConfig = !!options?.useConfig;
   const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
   if (fs.existsSync(metaPath)) {
     try {
       const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-      if (meta.defaultRating !== undefined) defaultRating = meta.defaultRating;
-      if (meta.kFactor !== undefined) kFactor = meta.kFactor;
-      if (meta.calibration !== undefined) calibration = meta.calibration;
-      if (meta.cohesionPenalty !== undefined) cohesionPenalty = meta.cohesionPenalty;
-      if (meta.cohesionBonus !== undefined) cohesionBonus = meta.cohesionBonus;
-      if (meta.cohesionSoloQ !== undefined) cohesionSoloQ = meta.cohesionSoloQ;
-      if (meta.cohesionDampingGames !== undefined) cohesionDampingGames = meta.cohesionDampingGames;
-      if (meta.cohesionTolerance !== undefined) cohesionTolerance = meta.cohesionTolerance;
-      if (meta.cohesionSteepness !== undefined) cohesionSteepness = meta.cohesionSteepness;
-      if (meta.scoreFactor !== undefined) scoreFactor = meta.scoreFactor;
-      if (meta.individualWeight !== undefined) individualWeight = meta.individualWeight;
-      if (meta.defaultLosingScore !== undefined) defaultLosingScore = meta.defaultLosingScore;
       if (meta.matchHead !== undefined) matchHead = meta.matchHead;
+
+      if (!useConfig) {
+        if (meta.defaultRating !== undefined) defaultRating = meta.defaultRating;
+        if (meta.kFactor !== undefined) kFactor = meta.kFactor;
+        if (meta.calibration !== undefined) calibration = meta.calibration;
+        if (meta.cohesionPenalty !== undefined) cohesionPenalty = meta.cohesionPenalty;
+        if (meta.cohesionBonus !== undefined) cohesionBonus = meta.cohesionBonus;
+        if (meta.cohesionSoloQ !== undefined) cohesionSoloQ = meta.cohesionSoloQ;
+        if (meta.cohesionDampingGames !== undefined) cohesionDampingGames = meta.cohesionDampingGames;
+        if (meta.cohesionTolerance !== undefined) cohesionTolerance = meta.cohesionTolerance;
+        if (meta.cohesionSteepness !== undefined) cohesionSteepness = meta.cohesionSteepness;
+        if (meta.scoreFactor !== undefined) scoreFactor = meta.scoreFactor;
+        if (meta.individualWeight !== undefined) individualWeight = meta.individualWeight;
+        if (meta.defaultLosingScore !== undefined) defaultLosingScore = meta.defaultLosingScore;
+        if (meta.rewardPoints !== undefined) rewardPoints = meta.rewardPoints;
+      }
     } catch (e) {
       // Ignore and use configuration defaults
     }
@@ -197,6 +207,7 @@ export async function runExplain(gameIdRef: string, playerArg?: string): Promise
       scoreFactor,
       individualWeight,
       defaultLosingScore,
+      rewardPoints,
     }
   );
 

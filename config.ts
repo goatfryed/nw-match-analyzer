@@ -21,6 +21,13 @@ export default {
         "seedingGames": 10,
         "defaultLosingScore": 333,
         "calibration": 1,
+        // MMR Reward Curve control points: [ [normalized_score, normalized_mapping] ]
+        // Examples:
+        // [] -> Linear
+        // [ [0.5, 0.80] ] -> Power curve through (500, 0.80)
+        // [ [0.15, 0.60], [0.85, 0.90] ] -> S-Curve (Monotonic Spline)
+        "rewardPoints": [
+        ],
         /**
          * +0: 50% wr
          * +25: 53.6% wr

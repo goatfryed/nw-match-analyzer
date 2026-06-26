@@ -44,6 +44,7 @@ export async function calculateSourceMmr(options: {
   const cohesionSteepness = (config as any).mmr?.cohesionSteepness ?? 2.0;
   const maxRowsPerGame = (config as any).validation?.maxRowsPerGame;
   const individualWeight = (config as any).mmr?.individualWeight ?? 0.5;
+  const rewardPoints = (config as any).mmr?.rewardPoints;
 
   const sourceCsvPath = path.resolve(process.cwd(), '.tmp/source.csv');
   if (!fs.existsSync(sourceCsvPath)) {
@@ -162,6 +163,7 @@ export async function calculateSourceMmr(options: {
     scoreFactor,
     individualWeight,
     defaultLosingScore,
+    rewardPoints,
   });
 
   const tmpDir = path.resolve(process.cwd(), '.tmp');
@@ -317,7 +319,8 @@ export async function calculateSourceMmr(options: {
     cohesionTolerance,
     cohesionSteepness,
     matchHead,
-    defaultLosingScore
+    defaultLosingScore,
+    rewardPoints
   };
   fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
 

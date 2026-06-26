@@ -36,6 +36,7 @@ export interface MmrOptions extends CohesionOptions {
   scoreFactor?: number;
   individualWeight?: number;
   defaultLosingScore?: number;
+  rewardPoints?: [number, number][];
 }
 
 export interface SortedMatch {
@@ -66,18 +67,115 @@ function getTeamScore(participants: CsvRecord[], side: string): number {
   return p && p.GameScore ? parseInt(p.GameScore, 10) || 0 : 0;
 }
 
+class MonotonicCubicSpline {
+  private x: number[];
+  private y: number[];
+  private d: number[];
+
+  constructor(xPts: number[], yPts: number[]) {
+    this.x = xPts;
+    this.y = yPts;
+    const n = xPts.length;
+
+    // 1. Secant slopes
+    const S: number[] = new Array(n - 1);
+    for (let i = 0; i < n - 1; i++) {
+      S[i] = (yPts[i + 1] - yPts[i]) / (xPts[i + 1] - xPts[i]);
+    }
+
+    // 2. Tangents
+    const d: number[] = new Array(n);
+    d[0] = S[0];
+    for (let i = 1; i < n - 1; i++) {
+      d[i] = (S[i - 1] + S[i]) / 2.0;
+    }
+    d[n - 1] = S[n - 2];
+
+    // 3. Fritsch-Carlson adjustment for monotonicity
+    for (let i = 0; i < n - 1; i++) {
+      if (Math.abs(S[i]) < 1e-9) {
+        d[i] = 0.0;
+        d[i + 1] = 0.0;
+      } else {
+        const alpha = d[i] / S[i];
+        const beta = d[i + 1] / S[i];
+        if (alpha * alpha + beta * beta > 9.0) {
+          const tau = 3.0 / Math.sqrt(alpha * alpha + beta * beta);
+          d[i] = tau * alpha * S[i];
+          d[i + 1] = tau * beta * S[i];
+        }
+      }
+    }
+
+    this.d = d;
+  }
+
+  public interpolate(xVal: number): number {
+    const n = this.x.length;
+    if (xVal <= this.x[0]) return this.y[0];
+    if (xVal >= this.x[n - 1]) return this.y[n - 1];
+
+    let i = 0;
+    while (i < n - 1 && xVal > this.x[i + 1]) {
+      i++;
+    }
+
+    const h = this.x[i + 1] - this.x[i];
+    const t = (xVal - this.x[i]) / h;
+
+    const h00 = 2 * t * t * t - 3 * t * t + 1;
+    const h10 = t * t * t - 2 * t * t + t;
+    const h01 = -2 * t * t * t + 3 * t * t;
+    const h11 = t * t * t - t * t;
+
+    return h00 * this.y[i] + h10 * h * this.d[i] + h01 * this.y[i + 1] + h11 * h * this.d[i + 1];
+  }
+}
+
+function mapScore(x: number, points: [number, number][]): number {
+  if (points.length === 0) {
+    return x;
+  }
+
+  // Transform points from Reward Curve space (0,1 -> 1,0) to Losing Score space (0,0 -> 1,1)
+  const transformedPoints: [number, number][] = points.map(([px, py]) => [px, 1 - py]);
+
+  if (transformedPoints.length === 1) {
+    const [x1, y1] = transformedPoints[0];
+    if (x1 <= 0 || x1 >= 1 || y1 <= 0 || y1 >= 1) {
+      return x;
+    }
+    const p = Math.log(y1) / Math.log(x1);
+    return Math.pow(x, p);
+  }
+
+  // Multi-point spline interpolation
+  const sorted = [...transformedPoints].sort((a, b) => a[0] - b[0]);
+  const xs = [0, ...sorted.map(p => p[0]), 1];
+  const ys = [0, ...sorted.map(p => p[1]), 1];
+
+  const spline = new MonotonicCubicSpline(xs, ys);
+  return spline.interpolate(x);
+}
+
 function calculateOutcomeShares(
   winnerScore: number,
   loserScore: number,
-  scoreFactor: number
+  scoreFactor: number,
+  rewardPoints?: [number, number][]
 ): { winnerShare: number; loserShare: number } {
   const sMax = winnerScore;
   const totalPoints = 1000 + 2 * scoreFactor * sMax;
   if (totalPoints <= 0) {
     return { winnerShare: 0.5, loserShare: 0.5 };
   }
-  const winnerRaw = 1000 + scoreFactor * (2 * sMax - loserScore);
-  const loserRaw = scoreFactor * loserScore;
+
+  const x = sMax > 0 ? loserScore / sMax : 0;
+  const mappedX = mapScore(x, rewardPoints ?? []);
+  const effectiveLoserScore = mappedX * sMax;
+
+  const winnerRaw = 1000 + scoreFactor * (2 * sMax - effectiveLoserScore);
+  const loserRaw = scoreFactor * effectiveLoserScore;
   return {
     winnerShare: winnerRaw / totalPoints,
     loserShare: loserRaw / totalPoints,
@@ -176,6 +274,7 @@ export function processSingleMatch(
     scoreFactor: number;
     individualWeight: number;
     defaultLosingScore?: number;
+    rewardPoints?: [number, number][];
   } & CohesionOptions
 ): MatchResult | null {
   const { participants } = match;
@@ -187,6 +286,7 @@ export function processSingleMatch(
     scoreFactor,
     individualWeight,
     defaultLosingScore = 600,
+    rewardPoints,
   } = options;
 
   let blueWon = false;
@@ -234,7 +334,7 @@ export function processSingleMatch(
   if (winnerColor && loserColor) {
     const winnerScore = winnerColor === 'blue' ? scoreBlue : scoreRed;
     const loserScore = winnerColor === 'blue' ? scoreRed : scoreBlue;
-    const { winnerShare, loserShare } = calculateOutcomeShares(winnerScore, loserScore, scoreFactor);
+    const { winnerShare, loserShare } = calculateOutcomeShares(winnerScore, loserScore, scoreFactor, rewardPoints);
 
     if (winnerColor === 'blue') {
       blueOutcome = winnerShare;
@@ -479,6 +579,7 @@ export function calculateMmrAndFriendship(
     previousFriendshipsSameGame = new Map(),
     previousFriendshipsSameSide = new Map(),
     previousMatchHead,
+    rewardPoints,
   } = options;
 
   // Group records by game / match
@@ -612,6 +713,7 @@ export function calculateMmrAndFriendship(
           scoreFactor,
           individualWeight,
           defaultLosingScore,
+          rewardPoints,
         }
       );
 
