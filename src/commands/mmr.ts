@@ -378,7 +378,7 @@ export async function runMmrList(options: {
     delta: parseFloat(r.delta) || 0.0,
   }));
 
-  const filtered = players;
+  const filtered = players.filter((p) => p.rank !== 0);
 
   // Assign dynamic MMR rank within the subset (only players with games >= seedingGames get ranked)
   const sortedByMmr = [...filtered].filter((p) => p.games >= seedingGames).sort((a, b) => b.mmr - a.mmr);
