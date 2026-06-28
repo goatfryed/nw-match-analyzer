@@ -36,6 +36,7 @@ export interface EloOptions extends CohesionOptions {
   individualWeight?: number;
   defaultLosingScore?: number;
   rewardPoints?: [number, number][];
+  calibrationFactor?: number;
 }
 
 export interface SortedMatch {
@@ -271,6 +272,7 @@ export function processSingleMatch(
     individualWeight: number;
     defaultLosingScore?: number;
     rewardPoints?: [number, number][];
+    calibrationFactor?: number;
   } & CohesionOptions
 ): MatchResult | null {
   const { participants } = match;
@@ -283,6 +285,7 @@ export function processSingleMatch(
     individualWeight,
     defaultLosingScore = 600,
     rewardPoints,
+    calibrationFactor = 2,
   } = options;
 
   let blueWon = false;
@@ -441,8 +444,7 @@ export function processSingleMatch(
 
   for (const stats of blueStats) {
     const oldVal = oldStatsMap.get(stats.player)!;
-    const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
-    const k = kFactor * (2.0 - w);
+    const k = stats.calibrationGames < calibration ? kFactor * calibrationFactor : kFactor;
     const playerCohesionBonus = tracker.getPlayerCohesionBonus(
       stats.player,
       bluePlayers,
@@ -479,8 +481,7 @@ export function processSingleMatch(
 
   for (const stats of redStats) {
     const oldVal = oldStatsMap.get(stats.player)!;
-    const w = Math.max(0.1, Math.min(1.0, stats.calibrationGames / calibration));
-    const k = kFactor * (2.0 - w);
+    const k = stats.calibrationGames < calibration ? kFactor * calibrationFactor : kFactor;
     const playerCohesionBonus = tracker.getPlayerCohesionBonus(
       stats.player,
       redPlayers,
@@ -572,6 +573,7 @@ export function calculateElo(
     previousFriendshipsSameSide = new Map(),
     previousMatchHead,
     rewardPoints,
+    calibrationFactor = 2,
   } = options;
 
   const games = new Map<string, CsvRecord[]>();
@@ -695,6 +697,7 @@ export function calculateElo(
           individualWeight,
           defaultLosingScore,
           rewardPoints,
+          calibrationFactor,
         }
       );
 

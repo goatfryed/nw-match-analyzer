@@ -15,12 +15,13 @@ export default {
     },
     "elo": {
         "defaultRating": 1500,
-        "kFactor": 32,
-        "amount": 20,
-        "sort": "descending",
         "seedingGames": 15,
+        "calibration": 5,
+        "calibrationFactor": 2,
+        "kFactor": 44,
         "defaultLosingScore": 500,
-        "calibration": 1,
+        "individualWeight": 0.5,
+        "scoreFactor": 5,
         // MMR Reward Curve control points: [ [normalized_score, normalized_mapping] ]
         // Examples:
         // [] -> Linear
@@ -39,9 +40,9 @@ export default {
         "cohesionBonus": 0,
         "cohesionSoloQ": 0.67,
         "cohesionDampingGames": 8,
-        "cohesionTolerance": 0.12,
-        "cohesionSteepness": 2.5,
-        "scoreFactor": 5,
-        "individualWeight": 0.5,
+        "cohesionTolerance": 0.10,
+        "cohesionSteepness": 2.25,
+        "amount": 25,
+        "sort": "descending",
     }
 }

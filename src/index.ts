@@ -154,6 +154,7 @@ const eloCmd = calculate
   .option('-k, --k-factor <number>', 'K-factor constant', (val) => parseFloat(val))
   .option('--generations <number>', 'number of generations', (val) => parseInt(val, 10))
   .option('--calibration <number>', 'number of games for full calibration', (val) => parseInt(val, 10))
+  .option('--calibration-factor <number>', 'calibration K-factor multiplier', (val) => parseFloat(val))
   .option('--score-factor <number>', 'multiplier for team scores relative to win bonus', (val) => parseFloat(val));
 
 eloCmd.action(async (options) => {

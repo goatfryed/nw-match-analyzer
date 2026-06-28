@@ -29,11 +29,13 @@ export async function calculateSourceElo(options: {
   from?: string;
   to?: string;
   scoreFactor?: number;
+  calibrationFactor?: number;
 }): Promise<void> {
   const defaultRating = options.defaultRating ?? (config as any).elo?.defaultRating ?? 1500;
   const kFactor = options.kFactor ?? (config as any).elo?.kFactor ?? 32;
   const generations = options.generations ?? 1;
   const calibration = options.calibration ?? (config as any).elo?.calibration ?? 10;
+  const calibrationFactor = options.calibrationFactor ?? (config as any).elo?.calibrationFactor ?? 2;
   const defaultLosingScore = (config as any).elo?.defaultLosingScore ?? 600;
   const scoreFactor = options.scoreFactor ?? (config as any).elo?.scoreFactor ?? 10;
 
@@ -163,6 +165,7 @@ export async function calculateSourceElo(options: {
     individualWeight,
     defaultLosingScore,
     rewardPoints,
+    calibrationFactor,
   });
 
   const tmpDir = path.resolve(process.cwd(), '.tmp');
