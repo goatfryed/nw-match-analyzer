@@ -95,9 +95,9 @@ export async function calculateSourceElo(options: {
   const previousFriendshipsSameSide = new Map<string, number>();
   const friendzoneCsvPath = path.resolve(process.cwd(), '.tmp/friendzone.csv');
 
-  if (!rebuild && fs.existsSync(friendzoneCsvPath)) {
+  if (fs.existsSync(friendzoneCsvPath)) {
     try {
-      console.log('Loading previous Friendzone relationship stats...');
+      console.log('Loading Friendzone relationship stats...');
       const fzContent = fs.readFileSync(friendzoneCsvPath, 'utf8');
       const fzRecords = parse(fzContent, { columns: true, skip_empty_lines: true, trim: true });
       for (const r of fzRecords) {
@@ -110,7 +110,7 @@ export async function calculateSourceElo(options: {
         }
       }
     } catch (e) {
-      console.warn('Could not parse previous friendzone.csv, starting fresh.');
+      console.warn('Could not parse friendzone.csv.');
     }
   }
 

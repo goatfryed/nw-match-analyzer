@@ -515,8 +515,6 @@ export function processSingleMatch(
     });
   }
 
-  tracker.recordMatch(bluePlayers, redPlayers);
-
   for (const pr of playersResult) {
     const roster = pr.side === 'blue' ? bluePlayers : redPlayers;
     pr.newCohesion = tracker.getPlayerCohesion(pr.player, roster, cohesionDampingGames);
@@ -671,13 +669,11 @@ export function calculateElo(
 
     tracker.sameGame.clear();
     tracker.sameSide.clear();
-    if (!rebuild) {
-      for (const [k, v] of previousFriendshipsSameGame.entries()) {
-        tracker.sameGame.set(k, v);
-      }
-      for (const [k, v] of previousFriendshipsSameSide.entries()) {
-        tracker.sameSide.set(k, v);
-      }
+    for (const [k, v] of previousFriendshipsSameGame.entries()) {
+      tracker.sameGame.set(k, v);
+    }
+    for (const [k, v] of previousFriendshipsSameSide.entries()) {
+      tracker.sameSide.set(k, v);
     }
 
     for (const match of matchesToProcess) {
