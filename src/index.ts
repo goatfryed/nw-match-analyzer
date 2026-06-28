@@ -2,13 +2,16 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { Command } from 'commander';
 import { downloadSourceSheet } from './commands/download.js';
-import { runFriendzoneList } from './friendzone/list.js';
-import { runFriendzoneShow } from './friendzone/show.js';
-import { runFriendzoneCliques } from './friendzone/cliques.js';
-import { runFriendzoneStacks } from './friendzone/stacks.js';
+import { runFriendzoneList } from './friendzone/display/list.js';
+import { runFriendzoneShow } from './friendzone/display/show.js';
+import { runFriendzoneCliques } from './friendzone/display/cliques.js';
+import { runFriendzoneStacks } from './friendzone/display/stacks.js';
 import { validateSourceData } from './commands/validate.js';
-import { runMmrList, runMmrShow, runMmrListGrinder } from './commands/mmr.js';
-import { calculateSourceMmr } from './calculate/index.js';
+import { runEloList } from './elo/display/list.js';
+import { runEloShow } from './elo/display/show.js';
+import { runListGrinders } from './commands/grinders.js';
+import { calculateSourceElo } from './elo/index.js';
+import { calculateSourceFriends } from './friendzone/index.js';
 import { runMatchList, runMatchShow } from './commands/match.js';
 import { uploadCsvSheet } from './commands/upload.js';
 import { runExplain } from './commands/explain.js';
@@ -36,6 +39,7 @@ program
       process.exit(1);
     }
   });
+
 program
   .command('validate')
   .description('Validate the downloaded source match data')
@@ -59,6 +63,7 @@ program
       process.exit(1);
     }
   });
+
 const friendzone = program
   .command('friendzone')
   .description('Friendzone analysis commands');
@@ -125,57 +130,87 @@ friendzone
     }
   });
 
-program
+const calculate = program
   .command('calculate')
-  .description('Calculate both MMR ratings and friendship insights from source CSV')
+  .description('Calculate both Elo ratings and friendship insights from source CSV')
+  .option('--rebuild', 'rebuild ratings from scratch')
+  .option('--from <string>', 'start game ID reference (e.g. start, head, gameId, gameId+N)')
+  .option('--to <string>', 'end game ID reference (e.g. gameId-N)');
+
+calculate.action(async (options) => {
+  try {
+    await calculateSourceFriends(options);
+    await calculateSourceElo(options);
+  } catch (error) {
+    console.error('Error running calculation:', error);
+    process.exit(1);
+  }
+});
+
+const eloCmd = calculate
+  .command('elo')
+  .description('Calculate Elo ratings only from source CSV')
   .option('-d, --default-rating <number>', 'default rating', (val) => parseFloat(val))
   .option('-k, --k-factor <number>', 'K-factor constant', (val) => parseFloat(val))
   .option('--generations <number>', 'number of generations', (val) => parseInt(val, 10))
   .option('--calibration <number>', 'number of games for full calibration', (val) => parseInt(val, 10))
-  .option('--rebuild', 'rebuild ratings and friendships from scratch')
-  .option('--from <string>', 'start game ID reference (e.g. start, head, gameId, gameId+N)')
-  .option('--to <string>', 'end game ID reference (e.g. gameId-N)')
-  .option('--score-factor <number>', 'multiplier for team scores relative to win bonus', (val) => parseFloat(val))
-  .action(async (options) => {
-    try {
-      await calculateSourceMmr(options);
-    } catch (error) {
-      console.error('Error running calculation:', error);
-      process.exit(1);
-    }
-  });
+  .option('--score-factor <number>', 'multiplier for team scores relative to win bonus', (val) => parseFloat(val));
 
-const mmr = program
-  .command('mmr')
-  .description('MMR analysis commands');
+eloCmd.action(async (options) => {
+  try {
+    const mergedOptions = { ...calculate.opts(), ...options };
+    await calculateSourceElo(mergedOptions);
+  } catch (error) {
+    console.error('Error running Elo calculation:', error);
+    process.exit(1);
+  }
+});
 
-mmr
+const friendsCmd = calculate
+  .command('friends')
+  .description('Calculate friendship insights only from source CSV');
+
+friendsCmd.action(async (options) => {
+  try {
+    const mergedOptions = { ...calculate.opts(), ...options };
+    await calculateSourceFriends(mergedOptions);
+  } catch (error) {
+    console.error('Error running friendship calculation:', error);
+    process.exit(1);
+  }
+});
+
+const elo = program
+  .command('elo')
+  .description('Elo analysis commands');
+
+elo
   .command('list')
-  .description('Print sorted summary of players MMR')
+  .description('Print sorted summary of players Elo')
   .option('-n, --lines <number>', 'number of players to print', (val) => parseInt(val, 10))
   .option('-s, --skip <number>', 'number of players to skip', (val) => parseInt(val, 10))
   .option('--sort <string>', 'sort order (ascending or descending)')
   .option('--tail', 'display from the tail (bottom) of the leaderboard list')
-  .option('--delta', 'sort leaderboard by delta MMR')
-  .option('--unredact', 'show unredacted MMR and rank for players below 50% of the ladder')
+  .option('--delta', 'sort leaderboard by delta Elo')
+  .option('--unredact', 'show unredacted Elo and rank for players below 50% of the ladder')
   .action(async (options) => {
     try {
-      await runMmrList(options);
+      await runEloList(options);
     } catch (error) {
-      console.error('Error running MMR list:', error);
+      console.error('Error running Elo list:', error);
       process.exit(1);
     }
   });
 
-mmr
+elo
   .command('show <player>')
-  .description('Show MMR profile of a specific player')
-  .option('--unredact', 'show unredacted MMR and rank for players below 50% of the ladder')
+  .description('Show Elo profile of a specific player')
+  .option('--unredact', 'show unredacted Elo and rank for players below 50% of the ladder')
   .action(async (player, options) => {
     try {
-      await runMmrShow(player, options);
+      await runEloShow(player, options);
     } catch (error) {
-      console.error('Error running MMR show:', error);
+      console.error('Error running Elo show:', error);
       process.exit(1);
     }
   });
@@ -213,8 +248,8 @@ match
 
 program
   .command('explain <gameId> [player]')
-  .description('Simulate and explain the outcome of a game on MMR and friendships')
-  .option('--use-config', 'use parameters from config.ts instead of mmr_meta.json')
+  .description('Simulate and explain the outcome of a game on Elo and friendships')
+  .option('--use-config', 'use parameters from config.ts instead of meta.elo.json')
   .action(async (gameId, player, options) => {
     try {
       await runExplain(gameId, player, options);
@@ -236,7 +271,7 @@ list
   .option('--tail', 'display from the tail (bottom) of the list')
   .action(async (options) => {
     try {
-      await runMmrListGrinder(options);
+      await runListGrinders(options);
     } catch (error) {
       console.error('Error running grinder list:', error);
       process.exit(1);

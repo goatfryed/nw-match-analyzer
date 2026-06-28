@@ -1,9 +1,8 @@
 import { CohesionTracker, CohesionOptions } from './cohesion.js';
-import { generateFriendzoneRecords, PairRecord } from './friendzone.js';
 
 export interface PlayerStats {
   player: string;
-  mmr: number;
+  elo: number;
   games: number;
   wins: number;
   losses: number;
@@ -19,7 +18,7 @@ export interface CsvRecord {
   [key: string]: string;
 }
 
-export interface MmrOptions extends CohesionOptions {
+export interface EloOptions extends CohesionOptions {
   defaultRating: number;
   kFactor: number;
   generations: number;
@@ -28,7 +27,7 @@ export interface MmrOptions extends CohesionOptions {
   rebuild?: boolean;
   fromMatchRef?: string;
   toMatchRef?: string;
-  previousPlayers?: Map<string, { mmr: number; games: number; wins: number; losses: number }>;
+  previousPlayers?: Map<string, { elo: number; games: number; wins: number; losses: number }>;
   previousFriendshipsSameGame?: Map<string, number>;
   previousFriendshipsSameSide?: Map<string, number>;
   previousMatchHead?: string;
@@ -137,7 +136,6 @@ function mapScore(x: number, points: [number, number][]): number {
     return x;
   }
 
-  // Transform points from Reward Curve space (0,1 -> 1,0) to Losing Score space (0,0 -> 1,1)
   const transformedPoints: [number, number][] = points.map(([px, py]) => [px, 1 - py]);
 
   if (transformedPoints.length === 1) {
@@ -149,7 +147,6 @@ function mapScore(x: number, points: [number, number][]): number {
     return Math.pow(x, p);
   }
 
-  // Multi-point spline interpolation
   const sorted = [...transformedPoints].sort((a, b) => a[0] - b[0]);
   const xs = [0, ...sorted.map(p => p[0]), 1];
   const ys = [0, ...sorted.map(p => p[1]), 1];
@@ -224,7 +221,6 @@ export function resolveIndex(
     }
   }
 
-  // Clamp index to valid match range
   if (finalIndex < 0) finalIndex = 0;
   if (finalIndex >= sortedMatches.length) finalIndex = sortedMatches.length - 1;
 
@@ -234,8 +230,8 @@ export function resolveIndex(
 export interface PlayerMatchOutcome {
   player: string;
   side: 'blue' | 'red';
-  oldMmr: number;
-  newMmr: number;
+  oldElo: number;
+  newElo: number;
   personalShare: number;
   teamShare: number;
   oldCohesion: number;
@@ -249,11 +245,11 @@ export interface MatchResult {
   winner: 'blue' | 'red';
   scoreBlue: number;
   scoreRed: number;
-  mmrBlue: number;
-  avgMmrBlue: number;
+  eloBlue: number;
+  avgEloBlue: number;
   cohesionBlue: number;
-  mmrRed: number;
-  avgMmrRed: number;
+  eloRed: number;
+  avgEloRed: number;
   cohesionRed: number;
   blueOutcome: number;
   redOutcome: number;
@@ -305,7 +301,6 @@ export function processSingleMatch(
   let scoreBlue = getTeamScore(participants, 'blue');
   let scoreRed = getTeamScore(participants, 'red');
 
-  // Validate scores
   if (scoreBlue >= 1000 && scoreRed >= 1000) {
     console.warn(`⚠️ Warning: Match "${match.gameId}" has scores >= 1000 for both sides (Blue: ${scoreBlue}, Red: ${scoreRed})`);
   } else if (scoreBlue > 1100 || scoreRed > 1100) {
@@ -359,7 +354,7 @@ export function processSingleMatch(
   const getOrCreatePlayer = (name: string): PlayerStats => {
     let stats = playerStatsMap.get(name);
     if (!stats) {
-      stats = { player: name, mmr: defaultRating, games: 0, wins: 0, losses: 0, calibrationGames: 0 };
+      stats = { player: name, elo: defaultRating, games: 0, wins: 0, losses: 0, calibrationGames: 0 };
       playerStatsMap.set(name, stats);
     }
     return stats;
@@ -405,10 +400,10 @@ export function processSingleMatch(
   const sumRedWeightsForAvg = redWeightsForAvg.reduce((sum, w) => sum + w, 0);
 
   const blueAvg = sumBlueWeightsForAvg > 0
-    ? blueStatsForAvg.reduce((sum, s, idx) => sum + s.mmr * blueWeightsForAvg[idx], 0) / sumBlueWeightsForAvg
+    ? blueStatsForAvg.reduce((sum, s, idx) => sum + s.elo * blueWeightsForAvg[idx], 0) / sumBlueWeightsForAvg
     : defaultRating;
   const redAvg = sumRedWeightsForAvg > 0
-    ? redStatsForAvg.reduce((sum, s, idx) => sum + s.mmr * redWeightsForAvg[idx], 0) / sumRedWeightsForAvg
+    ? redStatsForAvg.reduce((sum, s, idx) => sum + s.elo * redWeightsForAvg[idx], 0) / sumRedWeightsForAvg
     : defaultRating;
 
   const blueCohesionBonus = tracker.getTeamCohesionBonus(
@@ -430,16 +425,16 @@ export function processSingleMatch(
 
   const playersResult: PlayerMatchOutcome[] = [];
 
-  const oldStatsMap = new Map<string, { mmr: number; cohesion: number }>();
+  const oldStatsMap = new Map<string, { elo: number; cohesion: number }>();
   for (const p of bluePlayers) {
     oldStatsMap.set(p, {
-      mmr: getOrCreatePlayer(p).mmr,
+      elo: getOrCreatePlayer(p).elo,
       cohesion: tracker.getPlayerCohesion(p, bluePlayers, cohesionDampingGames),
     });
   }
   for (const p of redPlayers) {
     oldStatsMap.set(p, {
-      mmr: getOrCreatePlayer(p).mmr,
+      elo: getOrCreatePlayer(p).elo,
       cohesion: tracker.getPlayerCohesion(p, redPlayers, cohesionDampingGames),
     });
   }
@@ -454,14 +449,14 @@ export function processSingleMatch(
       cohesionDampingGames,
       options
     );
-    const expectedIndiv = 1 / (1 + Math.pow(10, (redEffective - (stats.mmr + playerCohesionBonus)) / 400));
+    const expectedIndiv = 1 / (1 + Math.pow(10, (redEffective - (stats.elo + playerCohesionBonus)) / 400));
     const expectedHybrid = (1 - individualWeight) * expectedBlue + individualWeight * expectedIndiv;
 
     const totalChange = k * (blueOutcome - expectedHybrid);
     const personalShare = k * individualWeight * (blueOutcome - expectedIndiv);
     const teamShare = k * (1 - individualWeight) * (blueOutcome - expectedBlue);
 
-    stats.mmr += totalChange;
+    stats.elo += totalChange;
     stats.games++;
     stats.wins += blueWon ? 1 : 0;
     stats.losses += blueWon ? 0 : 1;
@@ -472,8 +467,8 @@ export function processSingleMatch(
     playersResult.push({
       player: stats.player,
       side: 'blue',
-      oldMmr: oldVal.mmr,
-      newMmr: stats.mmr,
+      oldElo: oldVal.elo,
+      newElo: stats.elo,
       personalShare,
       teamShare,
       oldCohesion: oldVal.cohesion,
@@ -492,14 +487,14 @@ export function processSingleMatch(
       cohesionDampingGames,
       options
     );
-    const expectedIndiv = 1 / (1 + Math.pow(10, (blueEffective - (stats.mmr + playerCohesionBonus)) / 400));
+    const expectedIndiv = 1 / (1 + Math.pow(10, (blueEffective - (stats.elo + playerCohesionBonus)) / 400));
     const expectedHybrid = (1 - individualWeight) * expectedRed + individualWeight * expectedIndiv;
 
     const totalChange = k * (redOutcome - expectedHybrid);
     const personalShare = k * individualWeight * (redOutcome - expectedIndiv);
     const teamShare = k * (1 - individualWeight) * (redOutcome - expectedRed);
 
-    stats.mmr += totalChange;
+    stats.elo += totalChange;
     stats.games++;
     stats.wins += redWon ? 1 : 0;
     stats.losses += redWon ? 0 : 1;
@@ -510,8 +505,8 @@ export function processSingleMatch(
     playersResult.push({
       player: stats.player,
       side: 'red',
-      oldMmr: oldVal.mmr,
-      newMmr: stats.mmr,
+      oldElo: oldVal.elo,
+      newElo: stats.elo,
       personalShare,
       teamShare,
       oldCohesion: oldVal.cohesion,
@@ -533,11 +528,11 @@ export function processSingleMatch(
     winner: winnerColor || 'blue',
     scoreBlue,
     scoreRed,
-    mmrBlue: blueEffective,
-    avgMmrBlue: blueAvg,
+    eloBlue: blueEffective,
+    avgEloBlue: blueAvg,
     cohesionBlue: blueCohesionBonus,
-    mmrRed: redEffective,
-    avgMmrRed: redAvg,
+    eloRed: redEffective,
+    avgEloRed: redAvg,
     cohesionRed: redCohesionBonus,
     blueOutcome,
     redOutcome,
@@ -547,12 +542,11 @@ export function processSingleMatch(
   };
 }
 
-export function calculateMmrAndFriendship(
+export function calculateElo(
   records: CsvRecord[],
-  options: MmrOptions
+  options: EloOptions
 ): {
   players: PlayerStats[];
-  friendships: PairRecord[];
   matchHead: string;
   processedMatches: MatchResult[];
   prefixGameIds: Set<string>;
@@ -582,7 +576,6 @@ export function calculateMmrAndFriendship(
     rewardPoints,
   } = options;
 
-  // Group records by game / match
   const games = new Map<string, CsvRecord[]>();
   for (const record of records) {
     const game = record.game;
@@ -599,7 +592,6 @@ export function calculateMmrAndFriendship(
     games.get(matchKey)!.push(record);
   }
 
-  // Sort matches chronologically
   const sortedMatches: SortedMatch[] = Array.from(games.entries())
     .map(([matchKey, participants]) => {
       const dateStr = participants[0]?.date || '';
@@ -609,7 +601,6 @@ export function calculateMmrAndFriendship(
     })
     .sort((a, b) => a.date.getTime() - b.date.getTime());
 
-  // Check for duplicate game IDs across matches
   const gameIdToKeys = new Map<string, string[]>();
   for (const m of sortedMatches) {
     if (!gameIdToKeys.has(m.gameId)) {
@@ -624,19 +615,16 @@ export function calculateMmrAndFriendship(
     }
   }
 
-  // Check for matches exceeding maxRowsPerGame
   for (const m of sortedMatches) {
     if (m.participants.length >= maxRowsPerGame) {
       console.warn(`⚠️ Warning: Match "${m.matchKey}" has ${m.participants.length} participants (exceeds limit of ${maxRowsPerGame})`);
     }
   }
 
-  // Find index of previous matchHead
   const matchHeadIndex = previousMatchHead
     ? sortedMatches.findIndex((m) => m.gameId === previousMatchHead)
     : -1;
 
-  // Resolve boundary indices
   const defaultFromIndex = (rebuild || matchHeadIndex === -1) ? 0 : matchHeadIndex + 1;
   const defaultToIndex = sortedMatches.length - 1;
 
@@ -652,12 +640,11 @@ export function calculateMmrAndFriendship(
   const playerStatsMap = new Map<string, PlayerStats>();
   const tracker = new CohesionTracker();
 
-  // Populate map with previous players to preserve their Elo rating history
   if (!rebuild) {
     for (const [name, prev] of previousPlayers.entries()) {
       playerStatsMap.set(name, {
         player: name,
-        mmr: prev.mmr,
+        elo: prev.elo,
         games: prev.games,
         wins: prev.wins,
         losses: prev.losses,
@@ -669,7 +656,6 @@ export function calculateMmrAndFriendship(
   const processedMatches: MatchResult[] = [];
 
   for (let gen = 1; gen <= generations; gen++) {
-    // Reset stats for all players before each generation to their baseline previous state
     for (const [name, stats] of playerStatsMap.entries()) {
       const prev = previousPlayers.get(name);
       if (!rebuild && prev) {
@@ -683,7 +669,6 @@ export function calculateMmrAndFriendship(
       }
     }
 
-    // Reset friendship history tracker to the baseline previous state
     tracker.sameGame.clear();
     tracker.sameSide.clear();
     if (!rebuild) {
@@ -726,7 +711,6 @@ export function calculateMmrAndFriendship(
   }
 
   const players = Array.from(playerStatsMap.values());
-  const friendships = generateFriendzoneRecords(tracker);
 
   const lastProcessed = matchesToProcess[matchesToProcess.length - 1];
   if (lastProcessed) {
@@ -739,5 +723,5 @@ export function calculateMmrAndFriendship(
     prefixGameIds.add(sortedMatches[i].gameId);
   }
 
-  return { players, friendships, matchHead, processedMatches, prefixGameIds };
+  return { players, matchHead, processedMatches, prefixGameIds };
 }

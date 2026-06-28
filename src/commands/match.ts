@@ -2,8 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import config from '../../config.js';
-import { CohesionTracker } from '../calculate/cohesion.js';
-import { loadPairRecords } from '../friendzone/common.js';
+import { CohesionTracker } from '../elo/cohesion.js';
+import { loadPairRecords } from '../friendzone/index.js';
 
 interface CsvMatchRecord {
   gameId: string;
@@ -205,7 +205,7 @@ export async function runMatchShow(matchRef: string): Promise<void> {
   });
 
   let matchHeadIndex = matches.length - 1;
-  const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
+  const metaPath = path.resolve(process.cwd(), '.tmp/meta.elo.json');
   if (fs.existsSync(metaPath)) {
     try {
       const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));

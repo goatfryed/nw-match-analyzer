@@ -3,7 +3,7 @@ export default {
         "spreadsheetId": "1lJrTw9okwrOi9CyzLr_M3ecYi8cDcG4m-4Gtx-NsgCQ",
         "scoreboardSheetId": 1902818640,
         "matchSheetId": 258871598,
-        "mmrSheetId": 558216310,
+        "eloSheetId": 558216310,
     },
     "friendzone": {
         "matchThreshold": 5,
@@ -13,9 +13,9 @@ export default {
     "validation": {
         "maxRowsPerGame": 45
     },
-    "mmr": {
+    "elo": {
         "defaultRating": 1500,
-        "kFactor": 64,
+        "kFactor": 32,
         "amount": 20,
         "sort": "descending",
         "seedingGames": 15,
@@ -35,13 +35,13 @@ export default {
          * +75: 60.7% wr
          * +120: 66.6% wr
          */
-        "cohesionPenalty": 140,
-        "cohesionBonus": 30,
-        "cohesionSoloQ": 0.69,
-        "cohesionDampingGames": 20,
+        "cohesionPenalty": 100,
+        "cohesionBonus": 0,
+        "cohesionSoloQ": 0.67,
+        "cohesionDampingGames": 8,
         "cohesionTolerance": 0.12,
         "cohesionSteepness": 2.5,
-        "scoreFactor": 4,
+        "scoreFactor": 5,
         "individualWeight": 0.5,
     }
 }

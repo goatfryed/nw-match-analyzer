@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import config from '../../config.js';
-import { calculateMmrAndFriendship, CsvRecord } from './mmr.js';
+import { calculateElo, CsvRecord } from './calculation.js';
 import { getBannedPlayers } from '../common.js';
 
 function arrayToCsv(rows: string[][]): string {
@@ -20,7 +20,7 @@ function arrayToCsv(rows: string[][]): string {
     .join('\n');
 }
 
-export async function calculateSourceMmr(options: {
+export async function calculateSourceElo(options: {
   defaultRating?: number;
   kFactor?: number;
   generations?: number;
@@ -30,22 +30,22 @@ export async function calculateSourceMmr(options: {
   to?: string;
   scoreFactor?: number;
 }): Promise<void> {
-  const defaultRating = options.defaultRating ?? (config as any).mmr?.defaultRating ?? 1500;
-  const kFactor = options.kFactor ?? (config as any).mmr?.kFactor ?? 32;
+  const defaultRating = options.defaultRating ?? (config as any).elo?.defaultRating ?? 1500;
+  const kFactor = options.kFactor ?? (config as any).elo?.kFactor ?? 32;
   const generations = options.generations ?? 1;
-  const calibration = options.calibration ?? (config as any).mmr?.calibration ?? 10;
-  const defaultLosingScore = (config as any).mmr?.defaultLosingScore ?? 600;
-  const scoreFactor = options.scoreFactor ?? (config as any).mmr?.scoreFactor ?? 10;
+  const calibration = options.calibration ?? (config as any).elo?.calibration ?? 10;
+  const defaultLosingScore = (config as any).elo?.defaultLosingScore ?? 600;
+  const scoreFactor = options.scoreFactor ?? (config as any).elo?.scoreFactor ?? 10;
 
-  const cohesionPenalty = (config as any).mmr?.cohesionPenalty ?? 100;
-  const cohesionBonus = (config as any).mmr?.cohesionBonus ?? 100;
-  const cohesionSoloQ = (config as any).mmr?.cohesionSoloQ ?? 0.65;
-  const cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
-  const cohesionTolerance = (config as any).mmr?.cohesionTolerance ?? 0.12;
-  const cohesionSteepness = (config as any).mmr?.cohesionSteepness ?? 2.0;
+  const cohesionPenalty = (config as any).elo?.cohesionPenalty ?? 100;
+  const cohesionBonus = (config as any).elo?.cohesionBonus ?? 100;
+  const cohesionSoloQ = (config as any).elo?.cohesionSoloQ ?? 0.65;
+  const cohesionDampingGames = (config as any).elo?.cohesionDampingGames ?? 5;
+  const cohesionTolerance = (config as any).elo?.cohesionTolerance ?? 0.12;
+  const cohesionSteepness = (config as any).elo?.cohesionSteepness ?? 2.0;
   const maxRowsPerGame = (config as any).validation?.maxRowsPerGame;
-  const individualWeight = (config as any).mmr?.individualWeight ?? 0.5;
-  const rewardPoints = (config as any).mmr?.rewardPoints;
+  const individualWeight = (config as any).elo?.individualWeight ?? 0.5;
+  const rewardPoints = (config as any).elo?.rewardPoints;
 
   const sourceCsvPath = path.resolve(process.cwd(), '.tmp/source.csv');
   if (!fs.existsSync(sourceCsvPath)) {
@@ -66,20 +66,19 @@ export async function calculateSourceMmr(options: {
     throw new Error('CSV file is empty.');
   }
 
-  // Load previous state if rebuild option is not set
   const rebuild = !!options.rebuild;
-  const previousPlayers = new Map<string, { mmr: number; rank: string; games: number; wins: number; losses: number }>();
+  const previousPlayers = new Map<string, { elo: number; rank: string; games: number; wins: number; losses: number }>();
   const mmrCsvPath = path.resolve(process.cwd(), '.tmp/mmr.csv');
 
   if (!rebuild && fs.existsSync(mmrCsvPath)) {
     try {
-      console.log('Loading previous MMR ratings...');
+      console.log('Loading previous Elo ratings...');
       const mmrContent = fs.readFileSync(mmrCsvPath, 'utf8');
       const mmrRecords = parse(mmrContent, { columns: true, skip_empty_lines: true, trim: true });
       for (const r of mmrRecords) {
         if (r.player) {
           previousPlayers.set(r.player, {
-            mmr: parseFloat(r.mmr) || defaultRating,
+            elo: parseFloat(r.mmr) || defaultRating,
             rank: r.rank || '0',
             games: parseInt(r.games, 10) || 0,
             wins: parseInt(r.wins, 10) || 0,
@@ -94,7 +93,6 @@ export async function calculateSourceMmr(options: {
 
   const previousFriendshipsSameGame = new Map<string, number>();
   const previousFriendshipsSameSide = new Map<string, number>();
-  const previousFriendshipsIndex = new Map<string, number>();
   const friendzoneCsvPath = path.resolve(process.cwd(), '.tmp/friendzone.csv');
 
   if (!rebuild && fs.existsSync(friendzoneCsvPath)) {
@@ -109,7 +107,6 @@ export async function calculateSourceMmr(options: {
           const key = p1 < p2 ? `${p1}:${p2}` : `${p2}:${p1}`;
           previousFriendshipsSameGame.set(key, parseInt(r['same game'], 10) || 0);
           previousFriendshipsSameSide.set(key, parseInt(r['same side'], 10) || 0);
-          previousFriendshipsIndex.set(key, parseFloat(r['friendship index']) || 0.0);
         }
       }
     } catch (e) {
@@ -131,7 +128,7 @@ export async function calculateSourceMmr(options: {
   }
 
   let previousMatchHead: string | undefined;
-  const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
+  const metaPath = path.resolve(process.cwd(), '.tmp/meta.elo.json');
   if (!rebuild && fs.existsSync(metaPath)) {
     try {
       const metaContent = fs.readFileSync(metaPath, 'utf8');
@@ -143,7 +140,7 @@ export async function calculateSourceMmr(options: {
   }
 
   console.log('Orchestrating ratings calculation simulation (including moving cohesion)...');
-  const { players, friendships, matchHead, processedMatches, prefixGameIds } = calculateMmrAndFriendship(records, {
+  const { players, matchHead, processedMatches, prefixGameIds } = calculateElo(records, {
     defaultRating,
     kFactor,
     generations,
@@ -173,11 +170,10 @@ export async function calculateSourceMmr(options: {
     fs.mkdirSync(tmpDir, { recursive: true });
   }
 
-  const seedingGames = (config as any).mmr?.seedingGames ?? 10;
+  const seedingGames = (config as any).elo?.seedingGames ?? 10;
 
-  // Sort by MMR descending first to assign ranks. Only players with games >= seedingGames get a rank.
   const bannedPlayers = getBannedPlayers();
-  const rankedPlayers = [...players].filter((p) => p.games >= seedingGames).sort((a, b) => b.mmr - a.mmr);
+  const rankedPlayers = [...players].filter((p) => p.games >= seedingGames).sort((a, b) => b.elo - a.elo);
   const playerRankMap = new Map<string, string>();
   let activeCount = 0;
   rankedPlayers.forEach((p) => {
@@ -190,7 +186,6 @@ export async function calculateSourceMmr(options: {
     }
   });
 
-  // Now sort players alphabetically by name
   players.sort((a, b) => a.player.localeCompare(b.player, undefined, { sensitivity: 'base' }));
 
   const mmrCsvRows: string[][] = [['player', 'mmr', 'rank', 'games', 'wins', 'losses', 'delta', 'rank delta']];
@@ -199,12 +194,12 @@ export async function calculateSourceMmr(options: {
     const rank = playerRankMap.get(stats.player) || '0';
     const prevRank = prev ? prev.rank : '0';
 
-    let prevMmr = prev ? prev.mmr : defaultRating;
+    let prevMmr = prev ? prev.elo : defaultRating;
     if (rank !== '0' && prevRank === '0') {
       prevMmr = defaultRating;
     }
 
-    const deltaVal = stats.mmr - prevMmr;
+    const deltaVal = stats.elo - prevMmr;
     const deltaStr = (deltaVal >= 0 ? '+' : '') + deltaVal.toFixed(2);
 
     let rankDeltaStr = '';
@@ -226,7 +221,7 @@ export async function calculateSourceMmr(options: {
 
     mmrCsvRows.push([
       stats.player,
-      stats.mmr.toFixed(2),
+      stats.elo.toFixed(2),
       rank,
       String(stats.games),
       String(stats.wins),
@@ -236,33 +231,9 @@ export async function calculateSourceMmr(options: {
     ]);
   }
   const mmrOutputPath = path.join(tmpDir, 'mmr.csv');
-  console.log(`Writing MMR data to ${mmrOutputPath}...`);
+  console.log(`Writing Elo data to ${mmrOutputPath}...`);
   fs.writeFileSync(mmrOutputPath, arrayToCsv(mmrCsvRows), 'utf8');
 
-  // 2. Save friendships to .tmp/friendzone.csv with delta values
-  const friendzoneCsvRows: string[][] = [
-    ['player', 'other', 'same game', 'same side', 'friendship index', 'delta']
-  ];
-  for (const pair of friendships) {
-    const key = pair.player < pair.other ? `${pair.player}:${pair.other}` : `${pair.other}:${pair.player}`;
-    const prevIndex = previousFriendshipsIndex.get(key) ?? 0.0;
-    const deltaVal = pair.friendshipIndex - prevIndex;
-    const deltaStr = (deltaVal >= 0 ? '+' : '') + deltaVal.toFixed(4);
-
-    friendzoneCsvRows.push([
-      pair.player,
-      pair.other,
-      String(pair.sameGame),
-      String(pair.sameSide),
-      pair.friendshipIndex.toFixed(4),
-      deltaStr,
-    ]);
-  }
-  const friendzoneOutputPath = path.join(tmpDir, 'friendzone.csv');
-  console.log(`Writing Friendzone data to ${friendzoneOutputPath}...`);
-  fs.writeFileSync(friendzoneOutputPath, arrayToCsv(friendzoneCsvRows), 'utf8');
-
-  // 3. Save matches to .tmp/matches.csv
   const keptMatches = previousMatchRecords.filter((r) => prefixGameIds.has(r['game id']));
 
   const matchesCsvRows: string[][] = [
@@ -281,7 +252,6 @@ export async function calculateSourceMmr(options: {
     ]
   ];
 
-  // Add kept matches
   for (const r of keptMatches) {
     let scoreBlue = r['score blue'];
     let scoreRed = r['score red'];
@@ -310,7 +280,6 @@ export async function calculateSourceMmr(options: {
     ]);
   }
 
-  // Add new processed matches
   for (const m of processedMatches) {
     matchesCsvRows.push([
       m.gameId,
@@ -318,11 +287,11 @@ export async function calculateSourceMmr(options: {
       m.winner,
       String(m.scoreBlue),
       String(m.scoreRed),
-      m.mmrBlue.toFixed(2),
-      m.avgMmrBlue.toFixed(2),
+      m.eloBlue.toFixed(2),
+      m.avgEloBlue.toFixed(2),
       m.cohesionBlue.toFixed(2),
-      m.mmrRed.toFixed(2),
-      m.avgMmrRed.toFixed(2),
+      m.eloRed.toFixed(2),
+      m.avgEloRed.toFixed(2),
       m.cohesionRed.toFixed(2)
     ]);
   }
@@ -331,7 +300,6 @@ export async function calculateSourceMmr(options: {
   console.log(`Writing matches history to ${matchesOutputPath}...`);
   fs.writeFileSync(matchesOutputPath, arrayToCsv(matchesCsvRows), 'utf8');
 
-  // 4. Save metadata JSON
   const gamesSet = new Set<string>();
   for (const record of records) {
     if (record.game && record.player && record.side) {
@@ -357,5 +325,5 @@ export async function calculateSourceMmr(options: {
   };
   fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
 
-  console.log('✅ MMR and Friendzone calculations complete.');
+  console.log('✅ Elo calculation complete.');
 }

@@ -1,12 +1,14 @@
-import { loadPairRecords } from './common.js';
-import config from '../../config.js';
+export interface PairRecord {
+  player: string;
+  other: string;
+  sameGame: number;
+  sameSide: number;
+  friendshipIndex: number;
+}
 
-interface CliquesOptions {
-  threshold?: number;
-  thresholdFriendship?: number;
-  amount?: number;
-  minSize?: number;
-  maxSize?: number;
+export interface CliqueResult {
+  players: string[];
+  avgFriendship: number;
 }
 
 function bronKerbosch(
@@ -21,7 +23,6 @@ function bronKerbosch(
     return;
   }
 
-  // Pivot selection for optimization
   const P_union_X = new Set([...P, ...X]);
   let pivot = '';
   let maxDegree = -1;
@@ -64,16 +65,19 @@ function getAverageFriendship(clique: string[], pairFriendshipIndex: Map<string,
   return count > 0 ? sum / count : 0;
 }
 
-export async function runFriendzoneCliques(options: CliquesOptions): Promise<void> {
-  const pairs = loadPairRecords();
-
-  const threshold = options.threshold ?? config.friendzone?.matchThreshold ?? 5;
-  const friendshipThreshold = options.thresholdFriendship ?? config.friendzone?.cliqueThreshold ?? 0.75;
-  const amount = options.amount ?? config.friendzone?.amount ?? 10;
-  const minSize = options.minSize ?? 3;
-  const maxSize = options.maxSize ?? 5;
-
-  console.log(`Building graph using relationships with >= ${threshold} games and friendship index >= ${friendshipThreshold.toFixed(4)}...`);
+export function findCliques(
+  pairs: PairRecord[],
+  options: {
+    threshold: number;
+    friendshipThreshold: number;
+    minSize: number;
+    maxSize: number;
+  }
+): {
+  sizeBuckets: Map<number, CliqueResult[]>;
+  activeVerticesCount: number;
+} {
+  const { threshold, friendshipThreshold, minSize, maxSize } = options;
 
   const adj = new Map<string, Set<string>>();
   const pairFriendshipIndex = new Map<string, number>();
@@ -100,13 +104,10 @@ export async function runFriendzoneCliques(options: CliquesOptions): Promise<voi
     }
   }
 
-  console.log(`Graph has ${allPlayers.size} active vertices (players with close relationships).`);
-
   const cliques: string[][] = [];
   bronKerbosch(new Set(), new Set(allPlayers), new Set(), adj, cliques);
 
-  // Group cliques by size
-  const sizeBuckets = new Map<number, Array<{ players: string[]; avgFriendship: number }>>();
+  const sizeBuckets = new Map<number, CliqueResult[]>();
 
   for (const clique of cliques) {
     if (clique.length < minSize) continue;
@@ -122,22 +123,5 @@ export async function runFriendzoneCliques(options: CliquesOptions): Promise<voi
     sizeBuckets.get(bucketSize)!.push({ players: sortedClique, avgFriendship });
   }
 
-  // Print buckets
-  for (let s = minSize; s <= maxSize; s++) {
-    const bucket = sizeBuckets.get(s) || [];
-    bucket.sort((a, b) => b.avgFriendship - a.avgFriendship);
-
-    const titleSuffix = s === maxSize ? ' (or larger)' : '';
-    console.log(`\n=== Cliques of ${s}${titleSuffix} (Top ${amount}) ===`);
-    
-    if (bucket.length === 0) {
-      console.log('  No cliques found.');
-      continue;
-    }
-
-    const displayList = bucket.slice(0, amount);
-    displayList.forEach((clique, index) => {
-      console.log(`  ${index + 1}. ${clique.players.join(', ')} (Friendship: ${clique.avgFriendship.toFixed(4)})`);
-    });
-  }
+  return { sizeBuckets, activeVerticesCount: allPlayers.size };
 }

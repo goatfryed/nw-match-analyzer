@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import config from '../../config.js';
-import { CohesionTracker } from '../calculate/cohesion.js';
+import { CohesionTracker } from '../elo/cohesion.js';
 import {
   processSingleMatch,
   resolveIndex,
@@ -10,7 +10,7 @@ import {
   PlayerStats,
   CsvRecord,
   SortedMatch
-} from '../calculate/mmr.js';
+} from '../elo/calculation.js';
 
 export async function runExplain(
   gameIdRef: string,
@@ -18,27 +18,27 @@ export async function runExplain(
   options?: { useConfig?: boolean }
 ): Promise<void> {
   if (!gameIdRef) {
-    console.error('Error: Game reference is required.');
+    console.error('Error: Game ID reference is required.');
     process.exit(1);
   }
 
-  let defaultRating = (config as any).mmr?.defaultRating ?? 1500;
-  let kFactor = (config as any).mmr?.kFactor ?? 32;
-  let calibration = (config as any).mmr?.calibration ?? 10;
-  let cohesionPenalty = (config as any).mmr?.cohesionPenalty ?? 100;
-  let cohesionBonus = (config as any).mmr?.cohesionBonus ?? 100;
-  let cohesionSoloQ = (config as any).mmr?.cohesionSoloQ ?? 0.65;
-  let cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
-  let cohesionTolerance = (config as any).mmr?.cohesionTolerance ?? 0.12;
-  let cohesionSteepness = (config as any).mmr?.cohesionSteepness ?? 2.0;
-  let scoreFactor = (config as any).mmr?.scoreFactor ?? 10;
-  let individualWeight = (config as any).mmr?.individualWeight ?? 0.5;
-  let defaultLosingScore = (config as any).mmr?.defaultLosingScore ?? 600;
-  let rewardPoints = (config as any).mmr?.rewardPoints;
+  let defaultRating = (config as any).elo?.defaultRating ?? 1500;
+  let kFactor = (config as any).elo?.kFactor ?? 32;
+  let calibration = (config as any).elo?.calibration ?? 10;
+  let cohesionPenalty = (config as any).elo?.cohesionPenalty ?? 100;
+  let cohesionBonus = (config as any).elo?.cohesionBonus ?? 100;
+  let cohesionSoloQ = (config as any).elo?.cohesionSoloQ ?? 0.65;
+  let cohesionDampingGames = (config as any).elo?.cohesionDampingGames ?? 5;
+  let cohesionTolerance = (config as any).elo?.cohesionTolerance ?? 0.12;
+  let cohesionSteepness = (config as any).elo?.cohesionSteepness ?? 2.0;
+  let scoreFactor = (config as any).elo?.scoreFactor ?? 10;
+  let individualWeight = (config as any).elo?.individualWeight ?? 0.5;
+  let defaultLosingScore = (config as any).elo?.defaultLosingScore ?? 600;
+  let rewardPoints = (config as any).elo?.rewardPoints;
   let matchHead: string | undefined;
 
   const useConfig = !!options?.useConfig;
-  const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
+  const metaPath = path.resolve(process.cwd(), '.tmp/meta.elo.json');
   if (fs.existsSync(metaPath)) {
     try {
       const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
@@ -75,7 +75,7 @@ export async function runExplain(
           const games = parseInt(r.games, 10) || 0;
           playerStatsMap.set(r.player, {
             player: r.player,
-            mmr: parseFloat(r.mmr) || defaultRating,
+            elo: parseFloat(r.mmr) || defaultRating,
             games,
             wins: parseInt(r.wins, 10) || 0,
             losses: parseInt(r.losses, 10) || 0,
@@ -230,8 +230,8 @@ export async function runExplain(
 
   console.log('  Blue Team:'.padEnd(47) + 'Red Team:');
   console.log(formatLine('Score:', String(result.scoreBlue), String(result.scoreRed)));
-  console.log(formatLine('Effective MMR:', result.mmrBlue.toFixed(2), result.mmrRed.toFixed(2)));
-  console.log(formatLine('Base MMR (Avg):', result.avgMmrBlue.toFixed(2), result.avgMmrRed.toFixed(2)));
+  console.log(formatLine('Effective Elo:', result.eloBlue.toFixed(2), result.eloRed.toFixed(2)));
+  console.log(formatLine('Base Elo (Avg):', result.avgEloBlue.toFixed(2), result.avgEloRed.toFixed(2)));
   console.log(
     formatLine(
       'Cohesion Elo Bonus:',
@@ -241,7 +241,7 @@ export async function runExplain(
   );
   console.log(
     formatLine(
-      'MMR Change:',
+      'Elo Change:',
       (rawTeamChangeBlue >= 0 ? '+' : '') + rawTeamChangeBlue.toFixed(2),
       (rawTeamChangeRed >= 0 ? '+' : '') + rawTeamChangeRed.toFixed(2)
     )
@@ -252,16 +252,16 @@ export async function runExplain(
 
   if (exactPlayerName) {
     const pr = result.players.find((p) => p.player.toLowerCase() === exactPlayerName!.toLowerCase())!;
-    const oldMmrStr = pr.oldMmr.toFixed(2).padStart(7);
-    const newMmrStr = pr.newMmr.toFixed(2).padStart(7);
-    const totalDelta = pr.newMmr - pr.oldMmr;
+    const oldMmrStr = pr.oldElo.toFixed(2).padStart(7);
+    const newMmrStr = pr.newElo.toFixed(2).padStart(7);
+    const totalDelta = pr.newElo - pr.oldElo;
     const totalDeltaStr = ((totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)).padStart(6);
     const teamDeltaStr = ((pr.teamShare >= 0 ? '+' : '') + pr.teamShare.toFixed(2)).padStart(6);
     const personalDeltaStr = ((pr.personalShare >= 0 ? '+' : '') + pr.personalShare.toFixed(2)).padStart(6);
 
     console.log(`  ${pr.side === 'blue' ? 'Blue' : 'Red'} Team:`);
     console.log(
-      `    ${pr.player.padEnd(maxNameLen)} - [mmr] ${oldMmrStr} -> ${newMmrStr} ` +
+      `    ${pr.player.padEnd(maxNameLen)} - [elo] ${oldMmrStr} -> ${newMmrStr} ` +
       `(${totalDeltaStr}: ${teamDeltaStr}, ${personalDeltaStr})  ` +
       `[cohesion] ${pr.oldCohesion.toFixed(2)}, ${((pr.personalCohesionBonus >= 0 ? '+' : '') + pr.personalCohesionBonus.toFixed(2)).padStart(6)}`
     );
@@ -336,15 +336,15 @@ export async function runExplain(
       .sort((a, b) => a.player.localeCompare(b.player, undefined, { sensitivity: 'base' }));
 
     for (const pr of bluePlayers) {
-      const oldMmrStr = pr.oldMmr.toFixed(2).padStart(7);
-      const newMmrStr = pr.newMmr.toFixed(2).padStart(7);
-      const totalDelta = pr.newMmr - pr.oldMmr;
+      const oldMmrStr = pr.oldElo.toFixed(2).padStart(7);
+      const newMmrStr = pr.newElo.toFixed(2).padStart(7);
+      const totalDelta = pr.newElo - pr.oldElo;
       const totalDeltaStr = ((totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)).padStart(6);
       const teamDeltaStr = ((pr.teamShare >= 0 ? '+' : '') + pr.teamShare.toFixed(2)).padStart(6);
       const personalDeltaStr = ((pr.personalShare >= 0 ? '+' : '') + pr.personalShare.toFixed(2)).padStart(6);
 
       console.log(
-        `    ${pr.player.padEnd(maxNameLen)} - [mmr] ${oldMmrStr} -> ${newMmrStr} ` +
+        `    ${pr.player.padEnd(maxNameLen)} - [elo] ${oldMmrStr} -> ${newMmrStr} ` +
         `(${totalDeltaStr}: ${teamDeltaStr}, ${personalDeltaStr})  ` +
         `[cohesion] ${pr.oldCohesion.toFixed(2)}, ${((pr.personalCohesionBonus >= 0 ? '+' : '') + pr.personalCohesionBonus.toFixed(2)).padStart(6)}`
       );
@@ -357,15 +357,15 @@ export async function runExplain(
       .sort((a, b) => a.player.localeCompare(b.player, undefined, { sensitivity: 'base' }));
 
     for (const pr of redPlayers) {
-      const oldMmrStr = pr.oldMmr.toFixed(2).padStart(7);
-      const newMmrStr = pr.newMmr.toFixed(2).padStart(7);
-      const totalDelta = pr.newMmr - pr.oldMmr;
+      const oldMmrStr = pr.oldElo.toFixed(2).padStart(7);
+      const newMmrStr = pr.newElo.toFixed(2).padStart(7);
+      const totalDelta = pr.newElo - pr.oldElo;
       const totalDeltaStr = ((totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2)).padStart(6);
       const teamDeltaStr = ((pr.teamShare >= 0 ? '+' : '') + pr.teamShare.toFixed(2)).padStart(6);
       const personalDeltaStr = ((pr.personalShare >= 0 ? '+' : '') + pr.personalShare.toFixed(2)).padStart(6);
 
       console.log(
-        `    ${pr.player.padEnd(maxNameLen)} - [mmr] ${oldMmrStr} -> ${newMmrStr} ` +
+        `    ${pr.player.padEnd(maxNameLen)} - [elo] ${oldMmrStr} -> ${newMmrStr} ` +
         `(${totalDeltaStr}: ${teamDeltaStr}, ${personalDeltaStr})  ` +
         `[cohesion] ${pr.oldCohesion.toFixed(2)}, ${((pr.personalCohesionBonus >= 0 ? '+' : '') + pr.personalCohesionBonus.toFixed(2)).padStart(6)}`
       );

@@ -18,8 +18,8 @@ function getColumnLetter(colCount: number): string {
 export async function uploadCsvSheet(type?: string): Promise<void> {
   const targetType = type?.toLowerCase();
 
-  if (targetType && targetType !== 'matches' && targetType !== 'mmr') {
-    throw new Error(`Upload type "${type}" is not supported. Only "matches" and "mmr" are currently supported.`);
+  if (targetType && targetType !== 'matches' && targetType !== 'mmr' && targetType !== 'elo') {
+    throw new Error(`Upload type "${type}" is not supported. Only "matches" and "elo" (or "mmr") are currently supported.`);
   }
 
   const spreadsheetId = config.sheets?.spreadsheetId;
@@ -37,15 +37,14 @@ export async function uploadCsvSheet(type?: string): Promise<void> {
     });
   }
 
-  if (!targetType || targetType === 'mmr') {
+  if (!targetType || targetType === 'mmr' || targetType === 'elo') {
     targets.push({
-      name: 'mmr',
-      sheetId: config.sheets?.mmrSheetId ?? 558216310,
+      name: 'elo',
+      sheetId: (config.sheets as any)?.eloSheetId ?? (config.sheets as any)?.mmrSheetId ?? 558216310,
       csvFilename: 'mmr.csv',
     });
   }
 
-  // Validate all targets first
   for (const target of targets) {
     if (target.sheetId === undefined) {
       throw new Error(`Sheet ID configuration for "${target.name}" is missing in config.`);
@@ -72,30 +71,31 @@ export async function uploadCsvSheet(type?: string): Promise<void> {
     });
 
     if (rows.length === 0) {
-      console.log(`${target.csvFilename} is empty. Skipping upload.`);
+      console.warn(`⚠️ Warning: "${target.csvFilename}" has no rows. Skipping upload.`);
       continue;
     }
 
     const sheetTitle = await getSheetTitle(sheetsClient, spreadsheetId, target.sheetId!);
-    const lastColLetter = getColumnLetter(rows[0].length);
-    const uploadRange = `${sheetTitle}!A:${lastColLetter}`;
+    const colLetter = getColumnLetter(rows[0].length);
+    const range = `${sheetTitle}!A:${colLetter}`;
 
-    console.log(`Clearing existing content in range "${uploadRange}"...`);
+    console.log(`Clearing existing content in range "${range}"...`);
     await sheetsClient.spreadsheets.values.clear({
       spreadsheetId,
-      range: uploadRange,
+      range,
     });
 
-    console.log(`Uploading ${rows.length} rows to range "${uploadRange}"...`);
+    console.log(`Uploading ${rows.length} rows to range "${range}"...`);
     await sheetsClient.spreadsheets.values.update({
       spreadsheetId,
-      range: uploadRange,
+      range,
       valueInputOption: 'USER_ENTERED',
       requestBody: {
         values: rows,
       },
     });
+    console.log(`Uploaded ${target.name} successfully.`);
   }
 
-  console.log('✅ Upload complete.');
+  console.log('✅ Upload process complete.');
 }

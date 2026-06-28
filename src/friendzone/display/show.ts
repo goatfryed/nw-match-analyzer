@@ -1,4 +1,4 @@
-import { loadPlayerGameCounts, loadPairRecords, findExactCasing } from './common.js';
+import { loadPlayerGameCounts, loadPairRecords, findExactCasing } from '../index.js';
 
 export async function runFriendzoneShow(
   playerArg: string,
