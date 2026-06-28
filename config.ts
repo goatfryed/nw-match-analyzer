@@ -15,11 +15,11 @@ export default {
     },
     "mmr": {
         "defaultRating": 1500,
-        "kFactor": 80,
+        "kFactor": 64,
         "amount": 20,
         "sort": "descending",
-        "seedingGames": 10,
-        "defaultLosingScore": 333,
+        "seedingGames": 15,
+        "defaultLosingScore": 500,
         "calibration": 1,
         // MMR Reward Curve control points: [ [normalized_score, normalized_mapping] ]
         // Examples:
@@ -35,13 +35,13 @@ export default {
          * +75: 60.7% wr
          * +120: 66.6% wr
          */
-        "cohesionPenalty": 80,
+        "cohesionPenalty": 140,
         "cohesionBonus": 30,
-        "cohesionSoloQ": 0.666,
-        "cohesionDampingGames": 10,
+        "cohesionSoloQ": 0.69,
+        "cohesionDampingGames": 20,
         "cohesionTolerance": 0.12,
         "cohesionSteepness": 2.5,
-        "scoreFactor": 5,
-        "individualWeight": 0.33,
+        "scoreFactor": 4,
+        "individualWeight": 0.5,
     }
 }

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import { loadPairRecords } from './common.js';
-import config from '../../../config.js';
+import config from '../../config.js';
 
 interface StacksOptions {
   threshold?: number;

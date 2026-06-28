@@ -1,21 +1,22 @@
-import config from '../config.js';
+import fs from 'fs';
+import path from 'path';
 
-export function resolvePlayerName(name: string): string {
-  const cleanName = name.trim();
-  const lowerName = cleanName.toLowerCase();
-  const aliases = (config as any).aliases || {};
-
-  for (const [mainName, aliasList] of Object.entries(aliases)) {
-    if (mainName.toLowerCase() === lowerName) {
-      return mainName;
-    }
-    if (Array.isArray(aliasList)) {
-      for (const alias of aliasList) {
-        if (alias.toLowerCase() === lowerName) {
-          return mainName;
-        }
-      }
-    }
+export function getBannedPlayers(): Set<string> {
+  const banned = new Set<string>();
+  const banlistPath = path.resolve(process.cwd(), '.tmp/banned.txt');
+  if (fs.existsSync(banlistPath)) {
+    const content = fs.readFileSync(banlistPath, 'utf8');
+    content
+      .split('\n')
+      .map(line => {
+        const hashIdx = line.indexOf('#');
+        const cleanLine = hashIdx !== -1 ? line.substring(0, hashIdx) : line;
+        return cleanLine.trim();
+      })
+      .filter(line => line)
+      .forEach(name => {
+        banned.add(name.toLowerCase());
+      });
   }
-  return cleanName;
+  return banned;
 }

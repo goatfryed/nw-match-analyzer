@@ -2,353 +2,15 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse/sync';
 import config from '../../config.js';
-import { calculateMmrAndFriendship, PlayerStats, CsvRecord } from '../calculate/mmr.js';
 
-function arrayToCsv(rows: string[][]): string {
-  return rows
-    .map((row) =>
-      row
-        .map((cell) => {
-          if (cell.includes(',') || cell.includes('\n') || cell.includes('"')) {
-            return `"${cell.replace(/"/g, '""')}"`;
-          }
-          return cell;
-        })
-        .join(',')
-    )
-    .join('\n');
-}
+import { getBannedPlayers } from '../common.js';
 
-export async function calculateSourceMmr(options: {
-  defaultRating?: number;
-  kFactor?: number;
-  generations?: number;
-  calibration?: number;
-  rebuild?: boolean;
-  from?: string;
-  to?: string;
-  scoreFactor?: number;
-}): Promise<void> {
-  const defaultRating = options.defaultRating ?? (config as any).mmr?.defaultRating ?? 1500;
-  const kFactor = options.kFactor ?? (config as any).mmr?.kFactor ?? 32;
-  const generations = options.generations ?? 1;
-  const calibration = options.calibration ?? (config as any).mmr?.calibration ?? 10;
-  const defaultLosingScore = (config as any).mmr?.defaultLosingScore ?? 600;
-  const scoreFactor = options.scoreFactor ?? (config as any).mmr?.scoreFactor ?? 10;
 
-  const cohesionPenalty = (config as any).mmr?.cohesionPenalty ?? 100;
-  const cohesionBonus = (config as any).mmr?.cohesionBonus ?? 100;
-  const cohesionSoloQ = (config as any).mmr?.cohesionSoloQ ?? 0.65;
-  const cohesionDampingGames = (config as any).mmr?.cohesionDampingGames ?? 5;
-  const cohesionTolerance = (config as any).mmr?.cohesionTolerance ?? 0.12;
-  const cohesionSteepness = (config as any).mmr?.cohesionSteepness ?? 2.0;
-  const maxRowsPerGame = (config as any).validation?.maxRowsPerGame;
-  const individualWeight = (config as any).mmr?.individualWeight ?? 0.5;
-  const rewardPoints = (config as any).mmr?.rewardPoints;
-
-  const sourceCsvPath = path.resolve(process.cwd(), '.tmp/source.csv');
-  if (!fs.existsSync(sourceCsvPath)) {
-    throw new Error(`Source CSV not found at ${sourceCsvPath}. Please run 'download' command first.`);
-  }
-
-  console.log(`Reading source CSV from ${sourceCsvPath}...`);
-  const fileContent = fs.readFileSync(sourceCsvPath, 'utf8');
-
-  console.log('Parsing CSV data...');
-  const records: CsvRecord[] = parse(fileContent, {
-    columns: true,
-    skip_empty_lines: true,
-    trim: true,
-  });
-
-  if (records.length === 0) {
-    throw new Error('CSV file is empty.');
-  }
-
-  // Load previous state if rebuild option is not set
-  const rebuild = !!options.rebuild;
-  const previousPlayers = new Map<string, { mmr: number; rank: number; games: number; wins: number; losses: number }>();
-  const mmrCsvPath = path.resolve(process.cwd(), '.tmp/mmr.csv');
-
-  if (!rebuild && fs.existsSync(mmrCsvPath)) {
-    try {
-      console.log('Loading previous MMR ratings...');
-      const mmrContent = fs.readFileSync(mmrCsvPath, 'utf8');
-      const mmrRecords = parse(mmrContent, { columns: true, skip_empty_lines: true, trim: true });
-      for (const r of mmrRecords) {
-        if (r.player) {
-          previousPlayers.set(r.player, {
-            mmr: parseFloat(r.mmr) || defaultRating,
-            rank: parseInt(r.rank, 10) || 0,
-            games: parseInt(r.games, 10) || 0,
-            wins: parseInt(r.wins, 10) || 0,
-            losses: parseInt(r.losses, 10) || 0,
-          });
-        }
-      }
-    } catch (e) {
-      console.warn('Could not parse previous mmr.csv, starting fresh.');
-    }
-  }
-
-  const previousFriendshipsSameGame = new Map<string, number>();
-  const previousFriendshipsSameSide = new Map<string, number>();
-  const previousFriendshipsIndex = new Map<string, number>();
-  const friendzoneCsvPath = path.resolve(process.cwd(), '.tmp/friendzone.csv');
-
-  if (!rebuild && fs.existsSync(friendzoneCsvPath)) {
-    try {
-      console.log('Loading previous Friendzone relationship stats...');
-      const fzContent = fs.readFileSync(friendzoneCsvPath, 'utf8');
-      const fzRecords = parse(fzContent, { columns: true, skip_empty_lines: true, trim: true });
-      for (const r of fzRecords) {
-        if (r.player && r.other) {
-          const p1 = r.player;
-          const p2 = r.other;
-          const key = p1 < p2 ? `${p1}:${p2}` : `${p2}:${p1}`;
-          previousFriendshipsSameGame.set(key, parseInt(r['same game'], 10) || 0);
-          previousFriendshipsSameSide.set(key, parseInt(r['same side'], 10) || 0);
-          previousFriendshipsIndex.set(key, parseFloat(r['friendship index']) || 0.0);
-        }
-      }
-    } catch (e) {
-      console.warn('Could not parse previous friendzone.csv, starting fresh.');
-    }
-  }
-
-  const matchesCsvPath = path.resolve(process.cwd(), '.tmp/matches.csv');
-  const previousMatchRecords: any[] = [];
-  if (!rebuild && fs.existsSync(matchesCsvPath)) {
-    try {
-      console.log('Loading previous match records...');
-      const matchesContent = fs.readFileSync(matchesCsvPath, 'utf8');
-      const parsedRecords = parse(matchesContent, { columns: true, skip_empty_lines: true, trim: true });
-      previousMatchRecords.push(...parsedRecords);
-    } catch (e) {
-      console.warn('Could not parse previous matches.csv, starting fresh.');
-    }
-  }
-
-  let previousMatchHead: string | undefined;
-  const metaPath = path.resolve(process.cwd(), '.tmp/mmr_meta.json');
-  if (!rebuild && fs.existsSync(metaPath)) {
-    try {
-      const metaContent = fs.readFileSync(metaPath, 'utf8');
-      const meta = JSON.parse(metaContent);
-      previousMatchHead = meta.matchHead;
-    } catch (e) {
-      // Ignore
-    }
-  }
-
-  console.log('Orchestrating ratings calculation simulation (including moving cohesion)...');
-  const { players, friendships, matchHead, processedMatches, prefixGameIds } = calculateMmrAndFriendship(records, {
-    defaultRating,
-    kFactor,
-    generations,
-    calibration,
-    cohesionPenalty,
-    cohesionBonus,
-    cohesionSoloQ,
-    cohesionDampingGames,
-    cohesionTolerance,
-    cohesionSteepness,
-    rebuild,
-    fromMatchRef: options.from,
-    toMatchRef: options.to,
-    previousPlayers,
-    previousFriendshipsSameGame,
-    previousFriendshipsSameSide,
-    previousMatchHead,
-    maxRowsPerGame,
-    scoreFactor,
-    individualWeight,
-    defaultLosingScore,
-    rewardPoints,
-  });
-
-  const tmpDir = path.resolve(process.cwd(), '.tmp');
-  if (!fs.existsSync(tmpDir)) {
-    fs.mkdirSync(tmpDir, { recursive: true });
-  }
-
-  const seedingGames = (config as any).mmr?.seedingGames ?? 10;
-
-  // 1. Save ratings to .tmp/mmr.csv with delta values and ranks
-  // Sort by MMR descending first to assign ranks. Only players with games >= seedingGames get a rank.
-  const rankedPlayers = [...players].filter((p) => p.games >= seedingGames).sort((a, b) => b.mmr - a.mmr);
-  const playerRankMap = new Map<string, number>();
-  rankedPlayers.forEach((p, idx) => {
-    playerRankMap.set(p.player, idx + 1);
-  });
-
-  // Now sort players alphabetically by name
-  players.sort((a, b) => a.player.localeCompare(b.player, undefined, { sensitivity: 'base' }));
-
-  const mmrCsvRows: string[][] = [['player', 'mmr', 'rank', 'games', 'wins', 'losses', 'delta', 'rank delta']];
-  for (const stats of players) {
-    const prev = previousPlayers.get(stats.player);
-    const rank = playerRankMap.get(stats.player) || 0;
-    const prevRank = prev ? prev.rank : 0;
-
-    let prevMmr = prev ? prev.mmr : defaultRating;
-    if (rank > 0 && prevRank === 0) {
-      prevMmr = defaultRating;
-    }
-
-    const deltaVal = stats.mmr - prevMmr;
-    const deltaStr = (deltaVal >= 0 ? '+' : '') + deltaVal.toFixed(2);
-
-    let rankDeltaStr = '';
-    if (rank > 0) {
-      if (prevRank === 0) {
-        rankDeltaStr = 'new';
-      } else {
-        const diff = prevRank - rank;
-        rankDeltaStr = diff === 0 ? '--' : (diff > 0 ? '+' : '') + diff;
-      }
-    }
-
-    mmrCsvRows.push([
-      stats.player,
-      stats.mmr.toFixed(2),
-      String(rank),
-      String(stats.games),
-      String(stats.wins),
-      String(stats.losses),
-      deltaStr,
-      rankDeltaStr,
-    ]);
-  }
-  const mmrOutputPath = path.join(tmpDir, 'mmr.csv');
-  console.log(`Writing MMR data to ${mmrOutputPath}...`);
-  fs.writeFileSync(mmrOutputPath, arrayToCsv(mmrCsvRows), 'utf8');
-
-  // 2. Save friendships to .tmp/friendzone.csv with delta values
-  const friendzoneCsvRows: string[][] = [
-    ['player', 'other', 'same game', 'same side', 'friendship index', 'delta']
-  ];
-  for (const pair of friendships) {
-    const key = pair.player < pair.other ? `${pair.player}:${pair.other}` : `${pair.other}:${pair.player}`;
-    const prevIndex = previousFriendshipsIndex.get(key) ?? 0.0;
-    const deltaVal = pair.friendshipIndex - prevIndex;
-    const deltaStr = (deltaVal >= 0 ? '+' : '') + deltaVal.toFixed(4);
-
-    friendzoneCsvRows.push([
-      pair.player,
-      pair.other,
-      String(pair.sameGame),
-      String(pair.sameSide),
-      pair.friendshipIndex.toFixed(4),
-      deltaStr,
-    ]);
-  }
-  const friendzoneOutputPath = path.join(tmpDir, 'friendzone.csv');
-  console.log(`Writing Friendzone data to ${friendzoneOutputPath}...`);
-  fs.writeFileSync(friendzoneOutputPath, arrayToCsv(friendzoneCsvRows), 'utf8');
-
-  // 3. Save matches to .tmp/matches.csv
-  const keptMatches = previousMatchRecords.filter((r) => prefixGameIds.has(r['game id']));
-
-  const matchesCsvRows: string[][] = [
-    [
-      'game id',
-      'date',
-      'winner',
-      'score blue',
-      'score red',
-      'mmr blue',
-      'avg mmr blue',
-      'cohesion blue',
-      'mmr red',
-      'avg mmr red',
-      'cohesion red',
-    ]
-  ];
-
-  // Add kept matches
-  for (const r of keptMatches) {
-    let scoreBlue = r['score blue'];
-    let scoreRed = r['score red'];
-    if (scoreBlue === undefined || scoreBlue === '' || scoreRed === undefined || scoreRed === '') {
-      const winner = r['winner'];
-      if (winner === 'blue') {
-        scoreBlue = '1000';
-        scoreRed = '500';
-      } else {
-        scoreBlue = '500';
-        scoreRed = '1000';
-      }
-    }
-    matchesCsvRows.push([
-      r['game id'],
-      r['date'] || '',
-      r['winner'],
-      String(scoreBlue),
-      String(scoreRed),
-      r['mmr blue'],
-      r['avg mmr blue'],
-      r['cohesion blue'],
-      r['mmr red'],
-      r['avg mmr red'],
-      r['cohesion red']
-    ]);
-  }
-
-  // Add new processed matches
-  for (const m of processedMatches) {
-    matchesCsvRows.push([
-      m.gameId,
-      m.date,
-      m.winner,
-      String(m.scoreBlue),
-      String(m.scoreRed),
-      m.mmrBlue.toFixed(2),
-      m.avgMmrBlue.toFixed(2),
-      m.cohesionBlue.toFixed(2),
-      m.mmrRed.toFixed(2),
-      m.avgMmrRed.toFixed(2),
-      m.cohesionRed.toFixed(2)
-    ]);
-  }
-
-  const matchesOutputPath = path.join(tmpDir, 'matches.csv');
-  console.log(`Writing matches history to ${matchesOutputPath}...`);
-  fs.writeFileSync(matchesOutputPath, arrayToCsv(matchesCsvRows), 'utf8');
-
-  // 4. Save metadata JSON
-  const gamesSet = new Set<string>();
-  for (const record of records) {
-    if (record.game && record.player && record.side) {
-      gamesSet.add(record.date ? `${record.game}_${record.date}` : record.game);
-    }
-  }
-
-  const metadata = {
-    totalGames: gamesSet.size,
-    generations,
-    calibration,
-    defaultRating,
-    kFactor,
-    cohesionPenalty,
-    cohesionBonus,
-    cohesionSoloQ,
-    cohesionDampingGames,
-    cohesionTolerance,
-    cohesionSteepness,
-    matchHead,
-    defaultLosingScore,
-    rewardPoints
-  };
-  fs.writeFileSync(metaPath, JSON.stringify(metadata, null, 2), 'utf8');
-
-  console.log('✅ MMR and Friendzone calculations complete.');
-}
 
 interface CsvPlayerStats {
   player: string;
   mmr: number;
-  rank: number;
+  rank: string;
   games: number;
   wins: number;
   losses: number;
@@ -362,11 +24,12 @@ export async function runMmrList(options: {
   sort?: string;
   tail?: boolean;
   delta?: boolean;
+  unredact?: boolean;
 }): Promise<void> {
-  const seedingGames = (config as any).mmr?.seedingGames ?? 10;
   const lines = options.lines ?? (config as any).mmr?.amount ?? 20;
   const skip = options.skip ?? 0;
   const sortInput = (options.sort || (config as any).mmr?.sort || 'descending').toLowerCase();
+  const redact = !options.unredact;
 
   let ascending = true;
   if ('ascending'.startsWith(sortInput)) {
@@ -390,10 +53,12 @@ export async function runMmrList(options: {
     trim: true,
   });
 
+  const bannedPlayers = getBannedPlayers();
+
   const players: CsvPlayerStats[] = records.map((r: any) => ({
     player: r.player,
     mmr: parseFloat(r.mmr),
-    rank: parseInt(r.rank, 10),
+    rank: r.rank || '0',
     games: parseInt(r.games, 10),
     wins: parseInt(r.wins, 10),
     losses: parseInt(r.losses, 10),
@@ -401,14 +66,13 @@ export async function runMmrList(options: {
     rankDelta: r['rank delta'] || '',
   }));
 
-  const filtered = players.filter((p) => p.rank !== 0);
+  const activePlayerCount = players.filter(
+    (p) => p.rank !== '0' && p.rank !== '' && !bannedPlayers.has(p.player.trim().toLowerCase())
+  ).length;
 
-  // Assign dynamic MMR rank within the subset (only players with games >= seedingGames get ranked)
-  const sortedByMmr = [...filtered].filter((p) => p.games >= seedingGames).sort((a, b) => b.mmr - a.mmr);
-  const playerRankMap = new Map<string, number>();
-  sortedByMmr.forEach((p, idx) => {
-    playerRankMap.set(p.player, idx + 1);
-  });
+  const filtered = players.filter(
+    (p) => p.rank !== '0' && p.rank !== '' && (!redact || !bannedPlayers.has(p.player.trim().toLowerCase()))
+  );
 
   // Sort by MMR or Delta MMR
   if (options.delta) {
@@ -451,33 +115,81 @@ export async function runMmrList(options: {
   console.log(`\n${headingText}`);
   console.log(
     '  ' +
-    'Rank'.padEnd(6) +
+    'Rank'.padEnd(18) +
     'Player'.padEnd(25) +
-    'MMR'.padEnd(10) +
+    'MMR'.padEnd(18) +
     'Games'.padEnd(8) +
-    'Wins'.padEnd(6) +
-    'Losses'.padEnd(8) +
-    'Win Rate'.padEnd(10) +
-    'Delta'.padEnd(10) +
+    'Wins'.padEnd(18) +
+    'Losses'.padEnd(18) +
+    'Win Rate'.padEnd(18) +
+    'Delta'.padEnd(18) +
     'Rank Delta'
   );
-  console.log('  ' + '-'.repeat(90));
+  console.log('  ' + '-'.repeat(162));
 
   displayed.forEach((p) => {
     const winRate = p.games > 0 ? (p.wins / p.games) * 100 : 0;
-    const deltaStr = (p.delta >= 0 ? '+' : '') + p.delta.toFixed(2);
-    const dynamicRank = playerRankMap.get(p.player) || 0;
+    
+    // Check redaction based on the player's stored rank
+    const numericRank = parseFloat(p.rank);
+    const isBanned = bannedPlayers.has(p.player.trim().toLowerCase());
+    
+    let isRedacted = false;
+    let reason = '';
+    if (redact) {
+      if (isBanned) {
+        isRedacted = true;
+        reason = 'banned';
+      } else if (numericRank > activePlayerCount / 2) {
+        isRedacted = true;
+        reason = '50%';
+      }
+    }
+
+    let rankStr = p.rank;
+    let mmrStr = p.mmr.toFixed(2);
+    let gamesStr = String(p.games);
+    let winsStr = String(p.wins);
+    let lossesStr = String(p.losses);
+    let winRateStr = `${winRate.toFixed(1)}%`;
+    let deltaStr = (p.delta >= 0 ? '+' : '') + p.delta.toFixed(2);
+    let rankDeltaStr = p.rankDelta;
+
+    if (isRedacted) {
+      const redText = `<redacted:${reason}>`;
+      rankStr = redText;
+      mmrStr = redText;
+      winsStr = redText;
+      lossesStr = redText;
+      winRateStr = redText;
+      if (reason === '50%') {
+        if (p.delta > 0) {
+          deltaStr = (p.delta >= 0 ? '+' : '') + p.delta.toFixed(2);
+        } else {
+          deltaStr = redText;
+        }
+        if (p.rankDelta.startsWith('+') || p.rankDelta === 'new') {
+          rankDeltaStr = p.rankDelta;
+        } else {
+          rankDeltaStr = redText;
+        }
+      } else {
+        deltaStr = redText;
+        rankDeltaStr = redText;
+      }
+    }
+
     console.log(
       '  ' +
-      String(dynamicRank).padEnd(6) +
+      rankStr.padEnd(18) +
       p.player.padEnd(25) +
-      p.mmr.toFixed(2).padEnd(10) +
-      String(p.games).padEnd(8) +
-      String(p.wins).padEnd(6) +
-      String(p.losses).padEnd(8) +
-      `${winRate.toFixed(1)}%`.padEnd(10) +
-      deltaStr.padEnd(10) +
-      p.rankDelta
+      mmrStr.padEnd(18) +
+      gamesStr.padEnd(8) +
+      winsStr.padEnd(18) +
+      lossesStr.padEnd(18) +
+      winRateStr.padEnd(18) +
+      deltaStr.padEnd(18) +
+      rankDeltaStr
     );
   });
 
@@ -486,13 +198,16 @@ export async function runMmrList(options: {
   }
 }
 
-export async function runMmrShow(playerArg: string): Promise<void> {
+export async function runMmrShow(
+  playerArg: string,
+  options: { unredact?: boolean } = {}
+): Promise<void> {
   if (!playerArg) {
     console.error('Error: Player name is required.');
     process.exit(1);
   }
 
-  const seedingGames = (config as any).mmr?.seedingGames ?? 10;
+  const redact = !options.unredact;
 
   const mmrCsvPath = path.resolve(process.cwd(), '.tmp/mmr.csv');
   if (!fs.existsSync(mmrCsvPath)) {
@@ -509,7 +224,7 @@ export async function runMmrShow(playerArg: string): Promise<void> {
   const players: CsvPlayerStats[] = records.map((r: any) => ({
     player: r.player,
     mmr: parseFloat(r.mmr),
-    rank: parseInt(r.rank, 10),
+    rank: r.rank || '0',
     games: parseInt(r.games, 10),
     wins: parseInt(r.wins, 10),
     losses: parseInt(r.losses, 10),
@@ -525,23 +240,64 @@ export async function runMmrShow(playerArg: string): Promise<void> {
     return;
   }
 
-  let rankStr = '0 (unranked)';
-  if (stats.games >= seedingGames) {
-    const filtered = players.filter((p) => p.games >= seedingGames);
-    filtered.sort((a, b) => b.mmr - a.mmr); // Descending order for ranking
-    const rankIdx = filtered.findIndex((p) => p.player.toLowerCase() === targetLower);
-    if (rankIdx !== -1) {
-      rankStr = `${rankIdx + 1}/${filtered.length}`;
+  const bannedPlayers = getBannedPlayers();
+  const totalActiveCount = players.filter(
+    (p) => p.rank !== '0' && p.rank !== '' && !bannedPlayers.has(p.player.trim().toLowerCase())
+  ).length;
+
+  const isBanned = bannedPlayers.has(stats.player.trim().toLowerCase());
+  let rankStr = stats.rank;
+  let isRedacted = false;
+  let reason = '';
+
+  if (stats.rank !== '0' && stats.rank !== '') {
+    rankStr = `${stats.rank}/${totalActiveCount}`;
+    const numericRank = parseFloat(stats.rank);
+    if (redact) {
+      if (isBanned) {
+        isRedacted = true;
+        reason = 'banned';
+      } else if (numericRank > totalActiveCount / 2) {
+        isRedacted = true;
+        reason = '50%';
+      }
     }
+  } else {
+    if (redact && isBanned) {
+      isRedacted = true;
+      reason = 'banned';
+    }
+    rankStr = '0 (unranked)';
   }
 
   const winRate = stats.games > 0 ? (stats.wins / stats.games) * 100 : 0;
   const deltaStr = (stats.delta >= 0 ? '+' : '') + stats.delta.toFixed(2);
 
-  const eloRow = `Elo:`.padEnd(14) + `${stats.mmr.toFixed(2)} [${deltaStr}]`;
-  const rankRow = `Rank:`.padEnd(14) + (stats.rank > 0 ? `${rankStr} [${stats.rankDelta}]` : rankStr);
-  const gamesRow = `Games Played:`.padEnd(14) + stats.games;
-  const winsRow = `Wins:`.padEnd(14) + `${stats.wins}-${stats.losses} [${winRate.toFixed(1)}%]`;
+  let eloDisplay = `${stats.mmr.toFixed(2)} [${deltaStr}]`;
+  let rankDisplay = stats.rank !== '0' && stats.rank !== '' ? `${rankStr} [${stats.rankDelta}]` : rankStr;
+  let gamesDisplay = String(stats.games);
+  let winsDisplay = `${stats.wins}-${stats.losses} [${winRate.toFixed(1)}%]`;
+
+  if (isRedacted) {
+    const redText = `<redacted:${reason}>`;
+    eloDisplay = redText;
+    rankDisplay = redText;
+    winsDisplay = redText;
+
+    if (reason === '50%') {
+      if (stats.delta > 0) {
+        eloDisplay = `${redText} [${deltaStr}]`;
+      }
+      if (stats.rankDelta.startsWith('+') || stats.rankDelta === 'new') {
+        rankDisplay = `${redText} [${stats.rankDelta}]`;
+      }
+    }
+  }
+
+  const eloRow = `Elo:`.padEnd(14) + eloDisplay;
+  const rankRow = `Rank:`.padEnd(14) + rankDisplay;
+  const gamesRow = `Games Played:`.padEnd(14) + gamesDisplay;
+  const winsRow = `Wins:`.padEnd(14) + winsDisplay;
 
   console.log(`\n=== Player Profile: ${stats.player} ===`);
   console.log(`  ${eloRow}`);
@@ -570,10 +326,14 @@ export async function runMmrListGrinder(options: {
     trim: true,
   });
 
-  const players: { player: string; games: number }[] = records.map((r: any) => ({
-    player: r.player,
-    games: parseInt(r.games, 10) || 0,
-  }));
+  const bannedPlayers = getBannedPlayers();
+
+  const players: { player: string; games: number }[] = records
+    .map((r: any) => ({
+      player: r.player,
+      games: parseInt(r.games, 10) || 0,
+    }))
+    .filter((p: { player: string; games: number }) => !bannedPlayers.has(p.player.trim().toLowerCase()));
 
   // Sort by games descending, then alphabetically by player name
   players.sort((a: any, b: any) => {

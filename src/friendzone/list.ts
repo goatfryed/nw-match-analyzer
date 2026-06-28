@@ -1,5 +1,5 @@
 import { loadPlayerGameCounts, loadPairRecords, findExactCasing, PairRecord } from './common.js';
-import config from '../../../config.js';
+import config from '../../config.js';
 
 interface ListOptions {
   threshold?: number;

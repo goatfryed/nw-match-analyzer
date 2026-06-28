@@ -2,12 +2,13 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { Command } from 'commander';
 import { downloadSourceSheet } from './commands/download.js';
-import { runFriendzoneList } from './commands/friendzone/list.js';
-import { runFriendzoneShow } from './commands/friendzone/show.js';
-import { runFriendzoneCliques } from './commands/friendzone/cliques.js';
-import { runFriendzoneStacks } from './commands/friendzone/stacks.js';
+import { runFriendzoneList } from './friendzone/list.js';
+import { runFriendzoneShow } from './friendzone/show.js';
+import { runFriendzoneCliques } from './friendzone/cliques.js';
+import { runFriendzoneStacks } from './friendzone/stacks.js';
 import { validateSourceData } from './commands/validate.js';
-import { calculateSourceMmr, runMmrList, runMmrShow, runMmrListGrinder } from './commands/mmr.js';
+import { runMmrList, runMmrShow, runMmrListGrinder } from './commands/mmr.js';
+import { calculateSourceMmr } from './calculate/index.js';
 import { runMatchList, runMatchShow } from './commands/match.js';
 import { uploadCsvSheet } from './commands/upload.js';
 import { runExplain } from './commands/explain.js';
@@ -156,6 +157,7 @@ mmr
   .option('--sort <string>', 'sort order (ascending or descending)')
   .option('--tail', 'display from the tail (bottom) of the leaderboard list')
   .option('--delta', 'sort leaderboard by delta MMR')
+  .option('--unredact', 'show unredacted MMR and rank for players below 50% of the ladder')
   .action(async (options) => {
     try {
       await runMmrList(options);
@@ -168,9 +170,10 @@ mmr
 mmr
   .command('show <player>')
   .description('Show MMR profile of a specific player')
-  .action(async (player) => {
+  .option('--unredact', 'show unredacted MMR and rank for players below 50% of the ladder')
+  .action(async (player, options) => {
     try {
-      await runMmrShow(player);
+      await runMmrShow(player, options);
     } catch (error) {
       console.error('Error running MMR show:', error);
       process.exit(1);

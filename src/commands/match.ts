@@ -3,7 +3,7 @@ import path from 'path';
 import { parse } from 'csv-parse/sync';
 import config from '../../config.js';
 import { CohesionTracker } from '../calculate/cohesion.js';
-import { loadPairRecords } from './friendzone/common.js';
+import { loadPairRecords } from '../friendzone/common.js';
 
 interface CsvMatchRecord {
   gameId: string;
