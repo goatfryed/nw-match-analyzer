@@ -67,9 +67,17 @@ export async function runEloList(options: {
     (p) => p.rank !== '0' && p.rank !== '' && !bannedPlayers.has(p.player.trim().toLowerCase())
   ).length;
 
-  const filtered = players.filter(
-    (p) => p.rank !== '0' && p.rank !== '' && (!redact || !bannedPlayers.has(p.player.trim().toLowerCase()))
-  );
+  const filtered = players.filter((p) => {
+    if (p.rank === '0' || p.rank === '') return false;
+    const isBanned = bannedPlayers.has(p.player.trim().toLowerCase());
+    const numericRank = parseFloat(p.rank);
+    if (redact) {
+      if (isBanned || numericRank > activePlayerCount / 2) {
+        return false;
+      }
+    }
+    return true;
+  });
 
   if (options.delta) {
     filtered.sort((a, b) => (ascending ? a.delta - b.delta : b.delta - a.delta));
