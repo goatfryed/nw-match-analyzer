@@ -10,6 +10,7 @@ import { validateSourceData } from './commands/validate.js';
 import { runEloList } from './elo/display/list.js';
 import { runEloShow } from './elo/display/show.js';
 import { runListGrinders } from './commands/grinders.js';
+import { runListPlayers } from './commands/players.js';
 import { calculateSourceElo } from './elo/index.js';
 import { calculateSourceFriends } from './friendzone/index.js';
 import { runMatchList, runMatchShow } from './commands/match.js';
@@ -275,6 +276,19 @@ list
       await runListGrinders(options);
     } catch (error) {
       console.error('Error running grinder list:', error);
+      process.exit(1);
+    }
+  });
+
+list
+  .command('players')
+  .description('Print all players with at least 15 games in alphabetical order')
+  .option('-t, --threshold <number>', 'minimum games played threshold', (val) => parseInt(val, 10))
+  .action(async (options) => {
+    try {
+      await runListPlayers(options);
+    } catch (error) {
+      console.error('Error running player list:', error);
       process.exit(1);
     }
   });
